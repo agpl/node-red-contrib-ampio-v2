@@ -1,6 +1,6 @@
 <script type="text/javascript">
-    RED.nodes.registerType('Ampio LCD',{
-        category: 'Ampio',
+    RED.nodes.registerType('Ampio v2 LCD',{
+        category: 'Ampio v2',
         color: '#d4d9db',
         defaults: {
             lcdfont: {value:"07"},
@@ -10,14 +10,14 @@
             lcdbackcolor: {value:"000000"},
             mac: {value:""},
             name: {value:""},
-            server: {type:"ampioconfig", required:true}
+            server: {type:"ampiov2config", required:true}
         },
         inputs:1,
         outputs:0,
         icon: "face.png",
         align: "right",
         label: function() {
-            return this.name||"Ampio LCD";
+            return this.name||"Ampio v2 LCD";
         },
         oneditprepare: function(){
             var node = this;
@@ -26,7 +26,7 @@
             var VisDevices={};
             let cfgid = $("#node-input-server").val();
 
-            $.getJSON('ampio/'+cfgid+'/devices/types',function(json){
+            $.getJSON('ampio-v2/'+cfgid+'/devices/types',function(json){
                 DevTypes = json;
             });
             
@@ -49,7 +49,7 @@
             }
             function GetDevices(){
                 $("#node-input-mac").empty();
-                $.getJSON('ampio/'+cfgid+'/devices/list')
+                $.getJSON('ampio-v2/'+cfgid+'/devices/list')
                 	.done(function(data){
 						$('#node-input-mac').prop('disabled', false);
 						for (var i = 0; i< data.length; i++){
@@ -83,7 +83,7 @@
 
             $("#node-input-lookup-devices").on("click",function(){
                 cfgid = $("#node-input-server").val();
-                $.getJSON('ampio/'+cfgid+'/devices/types',function(json){
+                $.getJSON('ampio-v2/'+cfgid+'/devices/types',function(json){
                     DevTypes = json;
                 });
                 GetDevices();
@@ -93,7 +93,7 @@
     });
 </script>
 
-<script type="text/x-red" data-template-name="Ampio LCD">
+<script type="text/x-red" data-template-name="Ampio v2 LCD">
     <div class="form-row">
         <label for="node-input-srvaddress"><i class="icon-tag"></i> Server</label>
         <input type="text" id="node-input-server">    
@@ -142,7 +142,7 @@
     </div>
 </script>
 
-<script type="text/x-red" data-help-name="Ampio LCD">
+<script type="text/x-red" data-help-name="Ampio v2 LCD">
     <p>Ampio node used to send strings and commands to Ampio MDOT-LCD modules.<br/>
     <h3>Inputs</h3>
     <dl class="message-properties">

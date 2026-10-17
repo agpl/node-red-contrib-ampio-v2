@@ -1,13 +1,13 @@
-<script type="text/html" data-template-name="ampioconfig">
+<script type="text/html" data-template-name="ampiov2config">
     <div class="form-row">
         <label for="node-config-input-name"><i class="fa fa-tag"></i> Name</span></label>
         <input type="text" id="node-config-input-name" placeholder="Name">
     </div>
     <div class="form-row">
-        <ul style="min-width: 600px; margin-bottom: 20px;" id="node-ampioconfig-server-tabs"></ul>
+        <ul style="min-width: 600px; margin-bottom: 20px;" id="node-ampiov2config-server-tabs"></ul>
     </div>
-    <div id="node-ampioconfig-server-tabs-content" style="min-height:150px;">
-        <div id="ampioconfig-tab-connection" style="display:none">
+    <div id="node-ampiov2config-server-tabs-content" style="min-height:150px;">
+        <div id="ampiov2config-tab-connection" style="display:none">
             <div class="form-row node-input-server">
                 <label for="node-config-input-server"><i class="fa fa-globe"></i> Server</label>
                 <input type="text" id="node-config-input-server" style="width:40%;" placeholder="e.g. localhost">
@@ -24,7 +24,7 @@
             </div>
             <!--TLS ktorego jeszcze nie ma, planowany w 1.1.0-->
         </div>
-        <div id="ampioconfig-tab-security" style="display:none">
+        <div id="ampiov2config-tab-security" style="display:none">
             <div class="form-row">
                 <label for="node-config-input-user"><i class="fa fa-user"></i> User</span></label>
                 <input type="text" id="node-config-input-user">
@@ -38,7 +38,7 @@
 </script>
 
 <script type="text/javascript">
-    RED.nodes.registerType('ampioconfig',{
+    RED.nodes.registerType('ampiov2config',{
         category: 'config',
         defaults: {
             name: {value:""},
@@ -50,22 +50,22 @@
             password: {type: "password"}
         },
         label: function() {
-            return this.name||"Ampio Config";
+            return this.name||"Ampio v2 Config";
         },
         oneditprepare: function () {
             var tabs = RED.tabs.create({
-                id: "node-ampioconfig-server-tabs",
+                id: "node-ampiov2config-server-tabs",
                 onchange: function(tab) {
-                    $("#node-ampioconfig-server-tabs-content").children().hide();
+                    $("#node-ampiov2config-server-tabs-content").children().hide();
                     $("#" + tab.id).show();
                 }
             });
             tabs.addTab({
-                id: "ampioconfig-tab-connection",
+                id: "ampiov2config-tab-connection",
                 label: "Connection"
             });
             tabs.addTab({
-                id: "ampioconfig-tab-security",
+                id: "ampiov2config-tab-security",
                 label: "Credentials"
             });
             var node = this;

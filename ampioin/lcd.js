@@ -83,5 +83,5 @@ module.exports = function(RED) {
 
         node.brokerConn.register(node);
     }
-    RED.nodes.registerType("Ampio LCD",ampiolcd);
+    RED.nodes.registerType("Ampio v2 LCD",ampiolcd);
 };

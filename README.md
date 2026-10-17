@@ -1,23 +1,28 @@
-## Ampio Node-RED module
-Ampio add-on made to use Ampio Smart Home devices in Node-RED.
+## Ampio Node-RED module (v2)
+Ampio add-on made to use Ampio Smart Home devices in Node-RED, using the `device/v1` MQTT API.
+
+Published as `node-red-contrib-ampio-v2`. It can be installed alongside the original `node-red-contrib-ampio`: all node types (`Ampio v2 IN`, `Ampio v2 OUT`, `Ampio v2 LCD`, `Ampio v2 Events`, `ampiov2config`), the palette category (`Ampio v2`) and editor endpoints (`/ampio-v2/...`) have their own names, so existing v1 flows keep working.
 
 ## Pre-requisites
 You need Ampio Smart Home system, because this module is meant only to integrate it with another node-red plugins.
 You also need M-SERV-s with latest firmware, or Ampio Smart Home server installed in docker and connected through special serial-CAN adapter with Docker host device.
 
 ## Install
-This node should be pre-installed on your M-SERV-s. In case of having software in Docker, use MENU -> Manage Palette -> Install and type ampio. Another way is to use Terminal, and installing this add-on in your ~/.node-red directory.]
+This node should be pre-installed on your M-SERV-s. In case of having software in Docker, use MENU -> Manage Palette -> Install and type ampio-v2. Another way is to use Terminal, and installing this add-on in your ~/.node-red directory.]
 
 ## Using this add-on
 After having this module installed, you will see helpful instructions in Help sections.
 Basically, after installing you will have 4 add-ons:
-- Ampio IN, node meant to receive informations from modules, such like: states of inputs, outputs, flags, temperatures from sensors, states of analog inputs/outputs, and 8,16,32-bit measurements. Values will be delivered immediately, after they will change, they are not sent periodically.
-- Ampio OUT, meant to control outputs and flagfs ion Ampio system. You can also change temperature controller desired temperatures.
-- Ampio LCD, a complete tool to display text and shapes on LCD screen on MDOT touch panels.
-- Ampio Events, to send and/or receive events from your CAN Network.
+- Ampio v2 IN, node meant to receive informations from modules, such like: states of inputs, outputs, flags, temperatures from sensors, states of analog inputs/outputs, and 8,16,32-bit measurements. Values will be delivered immediately, after they will change, they are not sent periodically.
+- Ampio v2 OUT, meant to control outputs and flagfs ion Ampio system. You can also change temperature controller desired temperatures.
+- Ampio v2 LCD, a complete tool to display text and shapes on LCD screen on MDOT touch panels.
+- Ampio v2 Events, to send and/or receive events from your CAN Network.
 
 ## Changelog
 Disclaimer: every version lower than 1.0.0 is considered as beta. I do all my best to make every release as stable as possible, but due to fast development of protocol, API changes may occur. 1.0.0 is planned after transition to /b/ MQTT broadcasts, which requires many changes.
+
+### 0.7.x
+0.7.0 - Package renamed to `node-red-contrib-ampio-v2` with own node type names, so it does not collide with v1. **Breaking:** Ampio IN/OUT moved to the new MQTT API. State is read from `device/v1/state/leaf/<MAC>/<type>/<attribute>/<index>` and commands are sent to `device/v1/set/leaf/<MAC>/<type>/<attribute>/<index>`, with JSON payload `{"v": value}` (value can be an object, ex. RGBW `{h,s,v}`). Devices, types, attributes and channels are discovered from retained states; names come from `device_api/to/list`. Raw CAN commands, I/O descriptions and old value types were removed. **Existing IN/OUT nodes must be reconfigured (device, type, attribute, index).**<br>
 
 ### 0.6.x
 0.6.8 - support for CO2 in M-SENS<br>

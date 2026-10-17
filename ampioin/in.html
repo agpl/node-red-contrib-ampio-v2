@@ -1,230 +1,116 @@
 <script type="text/javascript">
-    RED.nodes.registerType('Ampio IN',{
-        category: 'Ampio',
+    RED.nodes.registerType('Ampio v2 IN',{
+        category: 'Ampio v2',
         color: '#d4d9db',
         defaults: {
-            valtype: {value:""},
-            mac: {value:""},
-            ioid: {value:""},
+            mac: {value:"", required:true},
+            devtype: {value:"", required:true, validate:RED.validators.number()},
+            attribute: {value:0, required:true, validate:RED.validators.number()},
+            index: {value:0, required:true, validate:RED.validators.number()},
             name: {value:""},
-            retainignore: {value:""},
-            server: {type:"ampioconfig", required:true}
+            retainignore: {value:false},
+            server: {type:"ampiov2config", required:true}
         },
         inputs:0,
         outputs:1,
         icon: "face.png",
         label: function() {
-            return this.name||"Ampio IN";
+            return this.name||"Ampio v2 IN";
         },
         oneditprepare: function(){
-            var node = this;
-            var DevTypes;
-            var ValTypes;
-            var VisDevices={};
-            let inoptions;
-            let cfgid = $("#node-input-server").val();
+            const node = this;
+            let TypeNames = {};
+            let Devices = {};
 
-            $.getJSON('ampio/'+cfgid+'/devices/types',function(json){
-                DevTypes = json;
-            });
-            $.getJSON('ampio/'+cfgid+'/invaluetypes',function(json){
-                ValTypes = json;
-            });
-            function b64DecodeUnicode(str) {
-    			// Going backwards: from bytestream, to percent-encoding, to original string.
-    			try{
-    				return decodeURIComponent(atob(str).split('').map(function(c) {
-        			return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-    				}).join(''));
-    			}
-    			catch(e){
-    				console.error("b64->UTF-8 error: " + atob(str))
-    				//document.getElementById("legacymqtt").style.display = "block";
-    				return atob(str);
-    			}
-			}
-            function pad (str, max) {
-                str = str.toString();
-                return str.length < max ? pad("0" + str, max) : str;
+            // fill select with values; saved value is kept selectable only when the device was not discovered
+            function fill(id, values, label, saved){
+                const sel = $(id).empty();
+                const has = saved !== '' && saved !== undefined;
+                if(has && !leafs() && values.indexOf(Number(saved)) === -1){
+                    values = [Number(saved)].concat(values);
+                }
+                values.forEach(function(v){
+                    $('<option>').val(v).text(label(v)).appendTo(sel);
+                });
+                if(has && values.indexOf(Number(saved)) !== -1){
+                    sel.val(saved);
+                }
+            }
+            function leafs(){
+                const dev = Devices[$('#node-input-mac').val()];
+                return dev ? dev.leafs : null;
+            }
+            function range(n){
+                return Array.from({length: n}, function(_, i){ return i; });
+            }
+            function FillTypes(){
+                const l = leafs();
+                const types = l ? l.map(function(x){ return x.type; }).filter(function(t, i, a){ return a.indexOf(t) === i; })
+                                : Object.keys(TypeNames).map(Number);
+                fill('#node-input-devtype', types, function(t){ return t + ' - ' + (TypeNames[t] || 'UNKNOWN'); }, node.devtype);
+                FillAttributes();
+            }
+            function FillAttributes(){
+                const l = leafs();
+                const type = Number($('#node-input-devtype').val());
+                const attrs = l ? l.filter(function(x){ return x.type === type; }).map(function(x){ return x.attribute; }) : [0];
+                fill('#node-input-attribute', attrs, String, node.attribute);
+                FillIndexes();
+            }
+            function FillIndexes(){
+                const l = leafs();
+                const type = Number($('#node-input-devtype').val());
+                const attr = Number($('#node-input-attribute').val());
+                const leaf = l && l.find(function(x){ return x.type === type && x.attribute === attr; });
+                fill('#node-input-index', range(leaf ? leaf.count : 32), function(i){ return i + ' (channel ' + (i + 1) + ')'; }, node.index);
             }
             function GetDevices(){
-                var ip = $('#node-input-srvaddress').val();
-                $("#node-input-mac").empty();
-                $.getJSON('ampio/'+cfgid+'/devices/list',{ip:ip})
-                .done(function(data){
-					$('#node-input-mac').prop('disabled', false);
-					for (var i = 0; i< data.length; i++){
-						var dev = data[i];
-                        try{
-                            if(DevTypes.hasOwnProperty(dev.typ) && DevTypes[dev.typ].hasOwnProperty('type')){
-                                $("<option value='" + dev.user_mac + "'> " + pad(dev.user_mac,4) + " - " + (DevTypes[dev.typ].type) + " (" + b64DecodeUnicode(dev.name) + ")</option>").appendTo('#node-input-mac');
-                            }
-                            else{
-                                $("<option value='" + dev.user_mac + "'> " + pad(dev.user_mac,4) + " - " + "Unknown type-" + dev.typ + " (" + b64DecodeUnicode(dev.name) + ")</option>").appendTo('#node-input-mac');
-                                throw "Unknown device type!";
-                            }
+                const cfgid = $('#node-input-server').val();
+                const sel = $('#node-input-mac').empty();
+                $('<option>').val('').text('Searching...').appendTo(sel);
+                $.getJSON('ampio-v2/'+cfgid+'/types', function(json){
+                    TypeNames = json;
+                }).always(function(){
+                    $.getJSON('ampio-v2/'+cfgid+'/devices/v1/list')
+                    .done(function(data){
+                        Devices = {};
+                        data.forEach(function(dev){
+                            Devices[dev.mac] = dev;
+                        });
+                    })
+                    .fail(function(xhr){
+                        RED.notify("Ampio: error loading devices (" + (xhr.responseJSON || xhr.status) + ")", "error");
+                    })
+                    .always(function(){
+                        sel.empty();
+                        if(node.mac && !Devices.hasOwnProperty(node.mac)){
+                            $('<option>').val(node.mac).text(node.mac + ' (not found)').appendTo(sel);
                         }
-                        catch(e){
-                            console.error(e);
+                        Object.keys(Devices).forEach(function(mac){
+                            const dev = Devices[mac];
+                            $('<option>').val(mac).text(mac + (dev.name ? ' (' + dev.name + ')' : '')).appendTo(sel);
+                        });
+                        if(node.mac){
+                            sel.val(node.mac);
                         }
-                        var tempObj={};
-						tempObj.type = dev.typ;
-						tempObj.name = b64DecodeUnicode(dev.name);
-						tempObj.soft = dev.soft_ver;
-						tempObj.rt=0;
-                        tempObj.protocol = dev.protocol;
-						
-						if(dev.hasOwnProperty("bi") && dev.hasOwnProperty("bo") && dev.hasOwnProperty("ai") && dev.hasOwnProperty("ao") && dev.hasOwnProperty("f")){
-							tempObj.bi = dev.bi;
-							tempObj.bo = dev.bo;
-							tempObj.ai = dev.ai;
-							tempObj.ao = dev.ao;
-							tempObj.f = dev.f;
-						}
-						else{
-							tempObj.bi = 40;
-							tempObj.bo = 32;
-							tempObj.ai = 8;
-							tempObj.ao = 16;
-							tempObj.f = 32;
-						}
-						if(DevTypes[dev.typ].hasOwnProperty('rt')){
-							tempObj.rt=DevTypes[dev.typ].rt;
-						}
-						VisDevices[dev.user_mac] = tempObj;
-					}
-					var dev = data[0];
-					$("#node-input-mac").val(dev.user_mac);
-					//$('#node-input-mac').trigger('change');
-					if(node.mac != "" && VisDevices.hasOwnProperty(node.mac)){
-						$("#node-input-mac").val(node.mac);
-					}
-					$('#node-input-mac').trigger('change');
-				})
-                .fail(function() {
-                    $('#node-input-mac').prop('disabled', 'disabled');
-                    $("<option value='" + "error" + "'> " + "Error loading devices!" + "</option>").appendTo('#node-input-mac');
+                        FillTypes();
+                    });
                 });
             }
-			function GetDesc(){
-				let ip = $('#node-input-srvaddress').val();
-           		let mac = $('#node-input-mac').val();
-           		let valtype = $('#node-input-valtype').val();
-           		let DevInfo = VisDevices[mac];
-           		$('#node-input-ioid').empty();
-           		let params={
-           			ip:ip,
-           			mac:mac,
-           			bo:DevInfo.bo,
-           			ao:DevInfo.ao,
-           			ai:DevInfo.ai,
-           			bi:DevInfo.bi,
-           			rt:DevInfo.rt,
-           			f:DevInfo.f,
-           			valtype:valtype,
-                    protocol:DevInfo.protocol
-           			};
-           		$.ajax({
-					url: 'ampio/'+cfgid+'/devices/desc/',
-					data: params,
-					dataType: 'json',
-					success: function(data){
-						let legacy=false;
-						for(i=0;i<data.length;i++){
-							if(i==0 && data[i]!=null){
-								$("<option value='" + i + "' disabled> " + atob(data[i]) + "</option>").appendTo('#node-input-ioid');
-								//document.getElementById("legacymqtt").style.display = "block";
-								legacy=true;
-								
-							}
-							else if(data[i]!=null){
-								$("<option value='" + i + "'> " + i + ": " + atob(data[i]) + "</option>").appendTo('#node-input-ioid');
-							}
-						}
-						if(!legacy){
-							//document.getElementById("legacymqtt").style.display = "none";
-						}
-						if(node.ioid!='' && node.valtype==valtype && node.mac==mac){
-                            $("#node-input-ioid").val(node.ioid);
-                            $('#node-input-ioid').trigger('change');
-                        }
-					},
-					error: function(data){
-					}
-				});
-			};
-
-            /*$("#node-input-server").on("change",function(){
-                $("#node-input-lookup-devices").trigger('click');
-            })*/
 
             GetDevices();
-            $("#node-input-lookup-devices").on("click",function(){
-                cfgid = $("#node-input-server").val();
-                $.getJSON('ampio/'+cfgid+'/devices/types',function(json){
-                    DevTypes = json;
-                });
-
-            	//document.getElementById("legacymqtt").style.display = "none";
-                GetDevices();
-            });
-            
-            $("#node-input-mac").on('change', function(){
-                $("#node-input-valtype").empty();
-                let mac = $('#node-input-mac').val()
-                if(VisDevices.hasOwnProperty(mac)){
-                    if(DevTypes[VisDevices[mac].type].hasOwnProperty('inoptions')){
-                        inoptions = [...DevTypes[VisDevices[mac].type].inoptions];
-                        if(VisDevices[mac].protocol>=22){
-                            inoptions.push('afu8');
-                        }
-                        let NodeValtypeExists = false;
-                        for(let i = 0; i < inoptions.length; i++){
-                            $("<option value='" + inoptions[i] + "'>" + ValTypes[inoptions[i]] + "</option>").appendTo('#node-input-valtype');
-                            if(node.valtype === inoptions[i]){
-                                NodeValtypeExists = true;
-                            }
-                        }
-                        
-
-                        if(node.valtype != '' && NodeValtypeExists){
-                            $("#node-input-valtype").val(node.valtype);
-                        }
-                        $('#node-input-valtype').trigger('change');
-                    }
-                } 
-            });
-            $('#node-input-valtype').on('change', function(){
-                let valuetype = $('#node-input-valtype').val();
-                if(valuetype == 'hum'  ||
-                   valuetype == 'absp' ||
-                   valuetype == 'relp' ||
-                   valuetype == 'db'   || 
-                   valuetype == 'lux'  || 
-                   valuetype == 'iaq'  || 
-                   valuetype == 'temp' ||
-                   valuetype == 'co2') {
-                    $('#ioid').hide();
-                    //document.getElementById("ioid").style.display = "none";
-                }
-                else{
-                    //document.getElementById("ioid").style.display = "block";
-                    $('#ioid').show();
-                }
-                if($("#node-input-mac").val()!==null){
-            		$("#node-input-ioid").empty();
-            		GetDesc();
-            	};
-            });
+            $("#node-input-lookup-devices").on("click", GetDevices);
+            $("#node-input-mac").on('change', FillTypes);
+            $("#node-input-devtype").on('change', FillAttributes);
+            $("#node-input-attribute").on('change', FillIndexes);
         }
     });
 </script>
 
-<script type="text/x-red" data-template-name="Ampio IN">
+<script type="text/x-red" data-template-name="Ampio v2 IN">
     <div class="form-row">
-        <label for="node-input-srvaddress"><i class="icon-tag"></i> Server</label>
-        <input type="text" id="node-input-server">    
-        </input>
+        <label for="node-input-server"><i class="icon-tag"></i> Server</label>
+        <input type="text" id="node-input-server">
     </div>
     <div class="form-row">
         <label for="node-input-mac"><i class="icon-tag"></i> Target device</label>
@@ -238,13 +124,16 @@
         </div>
     </div>
     <div class="form-row">
-        <label for="node-input-valtype"><i class="icon-tag"></i> Value Type</label>
-        <select type="text" id="node-input-valtype" placeholder="Value" style="width: 70%;">
-        </select>
+        <label for="node-input-devtype"><i class="icon-tag"></i> Type</label>
+        <select id="node-input-devtype" style="width: 70%;"></select>
     </div>
-    <div class="form-row" style="display: none;" id="ioid">
-        <label for="node-input-ioid"><i class="icon-tag"></i> I/O ID</label>
-        <select id="node-input-ioid" style="width: 70%;"></select>
+    <div class="form-row">
+        <label for="node-input-attribute"><i class="icon-tag"></i> Attribute</label>
+        <select id="node-input-attribute" style="width: 70%;"></select>
+    </div>
+    <div class="form-row">
+        <label for="node-input-index"><i class="icon-tag"></i> Index</label>
+        <select id="node-input-index" style="width: 70%;"></select>
     </div>
     <div class="form-row">
         <label for="node-input-name"><i class="icon-tag"></i> Name</label>
@@ -254,32 +143,33 @@
         <label for="node-input-retainignore"><i class="icon-tag"></i> Ignore Retain Flag</label>
         <input type="checkbox" id="node-input-retainignore">
     </div>
-    <!--<div class="form-tips" style='display: none' id='legacymqtt'>
-    	<b>Warning:</b> Please update MQTT bridge on your MSERV.
-    </div>-->
-    
 </script>
 
-<script type="text/x-red" data-help-name="Ampio IN">
-    <p>Ampio block used to receive broadcasts from modules.<br/>
+<script type="text/x-red" data-help-name="Ampio v2 IN">
+    <p>Ampio block used to receive state changes from devices.</p>
+    <p>Subscribes to <code>device/v1/state/leaf/&lt;MAC&gt;/&lt;type&gt;/&lt;attribute&gt;/&lt;index&gt;</code>.</p>
     <h3>Outputs</h3>
     <dl class="message-properties">
-    <dt>payload
-    <span class="property-type">string</span>
-    </dt>
-    <dd> state of the monitored device (input/temperature sensor/any other value.) </dd>
+        <dt>payload <span class="property-type">any</span></dt>
+        <dd>value of the <code>v</code> field from the JSON state message (ex. <code>{"v": 1}</code> gives <code>1</code>). For RGBW, CCT or RTC it is an object, ex. <code>{"h":0,"s":0,"v":0}</code>.</dd>
+        <dt>mac <span class="property-type">string</span></dt>
+        <dd>MAC address of the device.</dd>
+        <dt>devtype <span class="property-type">number</span></dt>
+        <dd>type code (ex. <code>128</code> BIN_IN, <code>129</code> REL, <code>130</code> TEMPERATURE).</dd>
+        <dt>attribute <span class="property-type">number</span></dt>
+        <dd>attribute number.</dd>
+        <dt>index <span class="property-type">number</span></dt>
+        <dd>channel index, counted from <code>0</code>.</dd>
     </dl>
     <h3>Details</h3>
-        <h4>Server address (required)</h4>
-        In most cases, leave it with default <code>'localhost'</code> address.<br>
-        Enter local IP address of your Ampio Smart Home MSERV-3s module. If you're running node-red on MSERV, enter localhost. <br>
-        <h4>Target Device (required)</h4>
-        After enetring valid server address, click search icon. List of Ampio devices in CAN network should be visible. Select device, which you want to use.
-        <h4>Value type (required)</h4>
-        Select type of value, which you want to read from device. Value will be sent only when changing its state.
-        <h4>I/O ID (required)</h4>
-        Enter the ID of input or output. Not required when using MSENS-2 (except flags).
-        <h4>Name (not required)</h4>
-        Enter here name of node block. It's not necessary.
-    </p>
+    <h4>Target device (required)</h4>
+    Click the search icon to discover devices. Devices are found from their retained states (<code>device/v1/state/leaf/#</code>), names come from <code>device_api/to/list</code>.
+    <h4>Type (required)</h4>
+    Type of the value to read. Only types discovered on the selected device are listed.
+    <h4>Attribute (required)</h4>
+    Usually <code>0</code>. Some types (ex. blinds) expose more attributes.
+    <h4>Index (required)</h4>
+    Channel number counted from <code>0</code> (ex. relay 1 is index <code>0</code>).
+    <h4>Ignore Retain Flag</h4>
+    When checked, retained messages (last known state sent on connect) are not passed on.
 </script>

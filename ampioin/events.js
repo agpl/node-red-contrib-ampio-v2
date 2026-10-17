@@ -37,7 +37,7 @@ module.exports = function(RED) {
         }
 
     }
-    RED.nodes.registerType("Ampio Events",ampioevents);
+    RED.nodes.registerType("Ampio v2 Events",ampioevents);
 };
 
 

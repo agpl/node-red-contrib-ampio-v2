@@ -3,13 +3,14 @@ module.exports = function(RED) {
     
     const mqtt = require('mqtt');
     const net = require("net");
+    const au = require('../generic/ampio-utils');
 
     function unixSocketConnectionBuilder(client, opts) {
         return net.createConnection(opts.pathname);
     }
 
     let node_global={};
-    function ampioconfig(config){
+    function ampiov2config(config){
     
         RED.nodes.createNode(this,config);
         let node;
@@ -65,7 +66,7 @@ module.exports = function(RED) {
             node.brokerurl = "mqtt://" + node.server + ":" + node.port;
         }
         console.log(node.brokerurl)
-        this.options.clientId = 'AmpioNode_' + (1+Math.random()*4294967295).toString(16);
+        this.options.clientId = 'AmpioNodeV2_' + (1+Math.random()*4294967295).toString(16);
         node.options.clean = true;
         node.options.username = node.username;
         node.options.password = node.password;
@@ -102,31 +103,28 @@ module.exports = function(RED) {
         }
 
 
+        node.createClient = function(options){
+            if (!node.server || node.server === "") {
+                return new mqtt.MqttClient(function (client) {
+                    return unixSocketConnectionBuilder(client, client.options);
+                }, options);
+            }
+            return mqtt.connect(node.brokerurl, options);
+        };
+
         node.connect = function(){ //mqtt connection part
             if(!node.connected && !node.connecting){
                 node.connecting = true;
                 try{
                     //node.client = null;
-                    if (!node.server || node.server === "") {
-                        node.client = new mqtt.MqttClient(function (client) {
-                            return unixSocketConnectionBuilder(
-                                client,
-                                client.options
-                            );
-                        }, node.options);
-                    } else {
-                        node.client = mqtt.connect(
-                            node.brokerurl,
-                            node.options
-                        );
-                    }
+                    node.client = node.createClient(node.options);
                     node.client.setMaxListeners(0);
 
                     //handle connect event, update node statuses
                     node.client.on('connect', function(){
                         node.connecting = false;
                         node.connected = true;
-                        node.log("Ampio Node instance connected to MQTT on: " + node.brokerurl + " with client id: " + node.options.clientId);
+                        node.log("Ampio v2 Node instance connected to MQTT on: " + node.brokerurl + " with client id: " + node.options.clientId);
 
                         for(var id in node.users) {
                             if (node.users.hasOwnProperty(id)) {
@@ -165,7 +163,7 @@ module.exports = function(RED) {
                     node.client.on('close', function (){
                         if(node.connected){
                             node.connected = false;
-                            node.log("! Ampio Node instance disconnected from MQTT on: " + node.brokerurl + " with client id: " + node.options.clientId);
+                            node.log("! Ampio v2 Node instance disconnected from MQTT on: " + node.brokerurl + " with client id: " + node.options.clientId);
                             //console.trace();
                             for (var id in node.users) {
                                 if (node.users.hasOwnProperty(id)) {
@@ -224,7 +222,6 @@ module.exports = function(RED) {
                         delete node.subscriptions[topic];
                         if (node.connected) {
                             node.client.unsubscribe(topic);
-                            node.client.end();
                         }
                     }
                 }
@@ -250,6 +247,8 @@ module.exports = function(RED) {
                     done && done(err);
                     return
                 });
+            } else {
+                done && done(new Error("Ampio MQTT broker not connected"));
             }
         };
 
@@ -257,9 +256,9 @@ module.exports = function(RED) {
 
 
         
-        //DEVICES LIST
-        RED.httpAdmin.get('/ampio/'+node_id+'/devices/list', RED.auth.needsPermission('ampio.read'),function(req,res){
-            console.log('/ampio/'+node_id+'/devices/list');
+        //DEVICES LIST (legacy ampio/ API, used only by the LCD node)
+        RED.httpAdmin.get('/ampio-v2/'+node_id+'/devices/list', RED.auth.needsPermission('ampiov2.read'),function(req,res){
+            console.log('/ampio-v2/'+node_id+'/devices/list');
             
             node=node_global[node_id];
             function OnSubscribe(){
@@ -317,254 +316,71 @@ module.exports = function(RED) {
 
         
         
-        //DESCRIPTIONS
-        RED.httpAdmin.get('/ampio/'+node_id+'/devices/desc', RED.auth.needsPermission('ampio.read'),function(req,res){
-        
-            let i = 0;
-            let dmac=req.query.mac;
-
-            console.log("Get descriptions");
-            function btoa(data){
-                let buff = new Buffer.from(data, 'ascii');
-                let text = buff.toString('base64');
-                return text;
+        //DEVICES DISCOVERY - retained device/v1 states, names from device_api list
+        const DEVICE_LIST_REQUEST = 'device_api/to/list';
+        const DEVICE_LIST_RESPONSE = 'device_api/from/list';
+        const STATE_TOPICS = 'device/v1/state/leaf/#';
+        const DISCOVERY_TIME = 2000;
+        RED.httpAdmin.get('/ampio-v2/'+node_id+'/devices/v1/list', RED.auth.needsPermission('ampiov2.read'),function(req,res){
+            // Separate client, so retained states re-sent on subscribe do not reach IN nodes
+            const client = node.createClient(Object.assign({}, node.options, {
+                clientId: node.options.clientId + '_discovery',
+                reconnectPeriod: 0,
+                connectTimeout: DISCOVERY_TIME
+            }));
+            const topics = [];
+            let names = {};
+            let finished = false;
+            function finish(status, body){
+                if(finished){
+                    return;
+                }
+                finished = true;
+                clearTimeout(timer);
+                client.end(true);
+                res.status(status).json(body);
             }
-
-            function ListLoop(params){
-                let List=[];
-                let data=params.data;
-                let con=params.con;
-                console.log(dmac);
-                console.log(params);
-                for(i=1;i<(Number(params.lim)+1);i++){
-                    List[i]=" ";
-                }	
-                for(var prop in data){
-                    if(data.hasOwnProperty(prop)){
-                        if(con.includes(Number(prop.split('_')[0]))){
-                            if([11,13,15,17].includes(Number(prop.split('_')[0]))){
-                                List[(Number(prop.split('_')[1])+255)]=data[prop];
-                            }
-                            else{
-                                List[(Number(prop.split('_')[1])+1)]=data[prop];
-                            }
-                        }
+            client.on('message', function(topic, message){
+                if(topic === DEVICE_LIST_RESPONSE){
+                    try{
+                        names = au.device_names(JSON.parse(message));
+                    }
+                    catch(err){
+                        node.warn("Invalid device list: " + err.message);
                     }
                 }
-                return List;
-            }
-            
-            function PrepareList(data){
-                var DescList;
-                let params={};
-                params.data=data;
-                let dict={
-                s: {
-                    lim: Math.max(req.query.bo,req.query.ao),
-                    con: [12,13,16,17]
-                },
-                    r: {
-                    lim: 0,
-                    con: []
-                },
-                    f: {
-                    lim: req.query.f,
-                    con: [6]
-                },
-                    afu8: {
-                    lim:6,
-                    con: [7]
-                },
-                    rs: {
-                    lim: req.query.rt,
-                    con: [16,17]
-                },
-                    rsdn: {
-                    lim: req.query.rt,
-                    con: [16,17]
-                },
-                    rm: {
-                    lim: req.query.rt,
-                    con: [16,17]
-                },
-                    t: {
-                    lim: 6,
-                    con: [3]
-                },
-                    o: {
-                    lim: Math.max(req.query.bo,req.query.ao),
-                    con: [12,13,16,17]
-                },
-                    a: {
-                    lim: Math.max(req.query.ai,req.query.ao),
-                    con: [14,15,16,17]
-                },
-                    re: {
-                    lim: req.query.bi,
-                    con: [1,2,10,11]
-                },
-                    rgbw: {
-                    lim: 1,
-                    con: []
-                },
-                    i: {
-                    lim: req.query.bi,
-                    con: [1,2,10,11]
-                },
-                    au: {
-                    lim: 18,
-                    con: []
-                },
-                    au16: {
-                    lim: 9,
-                    con: []
-                },
-                    au32: {
-                    lim: 32,
-                    con: []
-                },
-                ir: {
-                    lim: 0,
-                    con: [21]
-                }
-                }
-                
-                if(dict.hasOwnProperty(req.query.valtype)){
-                    params.con = dict[req.query.valtype].con;
-                    params.lim = dict[req.query.valtype].lim;
-                }
-                else{
-                    params.con=[];
-                    params.lim=0;
-                }
-                DescList=ListLoop(params);
-            return DescList;
-            }
-            
-            function ErrorLoop(WarningMessage,length){
-                let List=[];
-                List[0]=WarningMessage;
-                for(i=1;i<Number(length)+1;i++){
-                    List[i]=btoa("Error reading name");
-                }
-                return List;
-            }
-            
-            function ErrorList(){
-                let WarningMessage=null;
-                let List;
-                let limit;
-                
-                let bo=req.query.bo;
-                let bi=req.query.bi;
-                let ao=req.query.ao;
-                let ai=req.query.ai;
-                let f=req.query.f;
-                
-                if(bo==32 && ao==16 && bi==40 && ai==8){
-                console.log("Error loading descriptions data from MSERV.")
-            }
-            else if(bo==0 && ao==0 && bi==0 && ai==0){
-                WarningMessage=btoa("Update MQTT Bridge on your MSERV!");
-                console.log("It seems you have MQTT Bridge v3.3-3.6, which had descriptions functionality in beta version. Upgrade it by MSERV web panel or in Ampio Designer.")
-                bo=8;
-                bi=8;
-                ai=8;
-                f=32;
-            }
-                let LimDict={
-                    s: Math.max(bo,ao),
-                    r: 0,
-                    f: f,
-                    rs: req.query.rt,
-                    rsdn: req.query.rt,
-                    rm: req.query.rt,
-                    t: 6,
-                    o: Math.max(bo,ao),
-                    a: ai,
-                    re: bi,
-                    rgbw: 1,
-                    i: bi,
-                    ir: 32,
-                    au: 18,
-                    au16: 9,
-                    au32: 32,
-                    afu8: 6
-                }
-                if(LimDict.hasOwnProperty(req.query.valtype)){
-                    limit=LimDict[req.query.valtype];
-                }
-                else{
-                    limit=0;
-                }
-            
-            List=ErrorLoop(WarningMessage,limit)
-            return List;
-            }
-
-            //connection part
-            function OnSubscribe(){
-                return new Promise((resolve,reject) => {
-                    node.client.subscribe('ampio/from/'+dmac+'/description', function (err) { //topic to subscribe
-                        if (!err) {
-                            node.client.publish('ampio/to/'+dmac+'/description','');
-                            resolve(true);
-                        }
-                    });
-                    setTimeout(function() {
-                            resolve('timeout');
-                        }, 2000);
-                    });
-            }
-            function GetMessage(){
-                return new Promise((resolve,reject) => {
-                    node.client.on('message', function (topic, message) {
-                        if(topic === 'ampio/from/'+dmac+'/description'){
-                            let descriptions = JSON.parse(message);
-                            resolve(descriptions);
-                        }
-                    });
-                    setTimeout(function() {
-                        resolve('timeout');
-                    }, 2000);
-                });
-            }
-            
-            
-        
-            Promise.all([
-                OnSubscribe(),
-                GetMessage()
-            ])
-            .then(resp => {
-                if(resp[1]==='timeout'){
-                    node.client.unsubscribe('ampio/from/'+dmac+'/description');
-                    let r = ErrorList();
-                    res.json(r);
-                }
-                else{
-                    node.client.unsubscribe('ampio/from/'+dmac+'/description');
-                    //res.json(resp[1]);
-                    res.json(PrepareList(resp[1]));
+                else if(message.length > 0){
+                    topics.push(topic);
                 }
             });
+            client.on('error', function(err){
+                finish(502, "MQTT error: " + err.message);
+            });
+            client.on('connect', function(){
+                client.subscribe([DEVICE_LIST_RESPONSE, STATE_TOPICS], function(err){
+                    if(err){
+                        finish(500, "Subscribe failed: " + err.message);
+                        return;
+                    }
+                    client.publish(DEVICE_LIST_REQUEST, '');
+                });
+            });
+            const timer = setTimeout(function(){
+                if(!client.connected){
+                    finish(504, "MQTT broker not reachable");
+                    return;
+                }
+                finish(200, au.discover_devices(topics, names));
+            }, DISCOVERY_TIME);
         });
-        
 
-        RED.httpAdmin.get('/ampio/'+node_id+'/devices/types', RED.auth.needsPermission('ampio.read'),function(req,res){
+        RED.httpAdmin.get('/ampio-v2/'+node_id+'/types', RED.auth.needsPermission('ampiov2.read'),function(req,res){
+            res.json(require('./db/types.json'));
+        });
+
+        RED.httpAdmin.get('/ampio-v2/'+node_id+'/devices/types', RED.auth.needsPermission('ampiov2.read'),function(req,res){
             let DevTypes = require('./db/devtypes.json');
             res.json(DevTypes);
-        });
-
-        RED.httpAdmin.get('/ampio/'+node_id+'/invaluetypes', RED.auth.needsPermission('ampio.read'),function(req,res){
-            let ValTypes = require('./db/invaltypes.json');
-            //'hum', 'absp', 'relp', 'db', 'lm', 'iaq' nadawczy 1801, odbiorczy 1800
-            res.json(ValTypes);
-        });
-
-        RED.httpAdmin.get('/ampio/'+node_id+'/outvaluetypes', RED.auth.needsPermission('ampio.read'),function(req,res){
-            let ValTypes = require('./db/outvaltypes.json');
-            res.json(ValTypes);
         });
 
 
@@ -588,7 +404,7 @@ module.exports = function(RED) {
 
     
 
-    RED.nodes.registerType("ampioconfig",ampioconfig,{
+    RED.nodes.registerType("ampiov2config",ampiov2config,{
         credentials: {
             user: {type:"text"},
             password: {type: "password"}

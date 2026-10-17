@@ -78,3 +78,54 @@ exports.decStrToHexStr = function (dec_str) {
     const val = parseInt(dec_str, 10);
     return val.toString(16).padStart(2, '0');
 }
+
+// device/v1/<state|set>/leaf/<MAC>/<type>/<attribute>/<index>
+exports.build_topic = function (action, mac, type, attribute, index) {
+    return 'device/v1/' + action + '/leaf/' + mac + '/' + type + '/' + attribute + '/' + index;
+}
+
+// Payloads are JSON objects carrying the value in "v", ex. {"v": 1} or {"v": {"h": 0, "s": 0, "v": 0}}
+exports.encode_value = function (value) {
+    return JSON.stringify({v: value});
+}
+
+exports.decode_value = function (payload) {
+    const data = JSON.parse(payload.toString('utf-8'));
+    if (data === null || typeof data !== 'object' || !data.hasOwnProperty('v')) {
+        throw new Error('missing "v" field');
+    }
+    return data.v;
+}
+
+// Response of device_api/to/list -> {mac: name}, mac being lowercase hex of macProd as used in topics
+exports.device_names = function (data) {
+    const names = {};
+    (data.devices || []).forEach(function (dev) {
+        names[dev.macProd.toString(16)] = Buffer.from(dev.name || '', 'base64').toString('utf-8');
+    });
+    return names;
+}
+
+// Retained state topics -> [{mac, name, leafs: [{type, attribute, count}]}]
+exports.discover_devices = function (topics, names) {
+    const devices = {};
+    topics.forEach(function (topic) {
+        const p = topic.split('/');
+        if (p.length !== 8) {
+            return;
+        }
+        const leafs = devices[p[4]] = devices[p[4]] || {};
+        const key = p[5] + '/' + p[6];
+        leafs[key] = Math.max(leafs[key] || 0, Number(p[7]) + 1);
+    });
+    return Object.keys(devices).sort().map(function (mac) {
+        return {
+            mac: mac,
+            name: names[mac] || '',
+            leafs: Object.keys(devices[mac]).map(function (key) {
+                const ta = key.split('/').map(Number);
+                return {type: ta[0], attribute: ta[1], count: devices[mac][key]};
+            })
+        };
+    });
+}

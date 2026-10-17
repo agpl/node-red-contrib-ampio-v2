@@ -1,22 +1,22 @@
 <script type="text/javascript">
-    RED.nodes.registerType('Ampio Events',{
-        category: 'Ampio',
+    RED.nodes.registerType('Ampio v2 Events',{
+        category: 'Ampio v2',
         color: '#d4d9db',
         defaults: {
             name: {value:""},
-            server: {type:"ampioconfig", required:true}
+            server: {type:"ampiov2config", required:true}
         },
         inputs:1,
         outputs:1,
         icon: "face.png",
         align: "right",
         label: function() {
-            return this.name||"Ampio Events";
+            return this.name||"Ampio v2 Events";
         }
     });
 </script>
 
-<script type="text/x-red" data-template-name="Ampio Events">
+<script type="text/x-red" data-template-name="Ampio v2 Events">
     <div class="form-row">
         <label for="node-input-srvaddress"><i class="icon-tag"></i> Server</label>
         <input type="text" id="node-input-server">    
@@ -29,7 +29,7 @@
     </script>
 </script>
 
-<script type="text/x-red" data-help-name="Ampio Events">
+<script type="text/x-red" data-help-name="Ampio v2 Events">
     <p>Ampio node used to send and receive Events in Ampio Smart Home CAN network.<br/>
     <h3>Inputs</h3>
     <dl class="message-properties">
