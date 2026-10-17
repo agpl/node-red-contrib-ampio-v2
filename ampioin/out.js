@@ -6,6 +6,7 @@ module.exports = function(RED) {
         const node = this;
 
         node.mac = config.mac;
+        node.valtype = config.valtype || '';
         node.devtype = config.devtype;
         node.attribute = config.attribute;
         node.index = config.index;
@@ -16,21 +17,34 @@ module.exports = function(RED) {
             return;
         }
 
-        node.on("input", function(msg, send, done) {
+        // msg.valtype selects the legacy ampio/ API, msg.devtype device/v1, otherwise node configuration decides
+        function target(msg) {
             const mac = msg.hasOwnProperty('mac') ? String(msg.mac) : node.mac;
+            const index = Number(msg.hasOwnProperty('index') ? msg.index : (node.index || 0));
+            const valtype = msg.hasOwnProperty('valtype') ? String(msg.valtype) : (msg.hasOwnProperty('devtype') ? '' : node.valtype);
+            if (!mac || !Number.isInteger(index)) {
+                throw new Error("Invalid target: mac=" + mac + " index=" + index);
+            }
+            if (valtype !== '') {
+                return {topic: au.legacy_set_topic(mac, valtype, index), payload: au.encode_legacy_value(msg.payload)};
+            }
             const devtype = Number(msg.hasOwnProperty('devtype') ? msg.devtype : node.devtype);
             const attribute = Number(msg.hasOwnProperty('attribute') ? msg.attribute : (node.attribute || 0));
-            const index = Number(msg.hasOwnProperty('index') ? msg.index : (node.index || 0));
+            if (!Number.isInteger(devtype) || !Number.isInteger(attribute)) {
+                throw new Error("Invalid target: mac=" + mac + " devtype=" + devtype + " attribute=" + attribute + " index=" + index);
+            }
+            return {topic: au.build_topic('set', mac, devtype, attribute, index), payload: au.encode_value(msg.payload, msg.time)};
+        }
 
-            if (!mac || !Number.isInteger(devtype) || !Number.isInteger(attribute) || !Number.isInteger(index)) {
-                done(new Error("Invalid target: mac=" + mac + " devtype=" + devtype + " attribute=" + attribute + " index=" + index));
+        node.on("input", function(msg, send, done) {
+            let out;
+            try {
+                out = target(msg);
+            } catch (err) {
+                done(err);
                 return;
             }
-
-            node.brokerConn.publish({
-                topic: au.build_topic('set', mac, devtype, attribute, index),
-                payload: au.encode_value(msg.payload, msg.time)
-            }, function(err) {
+            node.brokerConn.publish(out, function(err) {
                 done(err);
             });
         });

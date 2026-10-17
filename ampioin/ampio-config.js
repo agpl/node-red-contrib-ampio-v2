@@ -316,8 +316,14 @@ module.exports = function(RED) {
 
         
         
-        //DEVICES DISCOVERY - get_devices over rpc/v2 (types, names), retained device/v1 states (attributes)
+        //DEVICES DISCOVERY
+        //  get_devices over rpc/v2: types, channel counts, names of device/v1 devices
+        //  retained device/v1 states: attributes; retained legacy ampio/from states: legacy value types
+        //  device_api list: names of legacy channels (optional)
         const STATE_TOPICS = 'device/v1/state/leaf/#';
+        const LEGACY_STATE_TOPICS = 'ampio/from/+/state/#';
+        const DEVICE_LIST_REQUEST = 'device_api/to/list';
+        const DEVICE_LIST_RESPONSE = 'device_api/from/list';
         const DISCOVERY_TIME = 2000;
         RED.httpAdmin.get('/ampio-v2/'+node_id+'/devices/v1/list', RED.auth.needsPermission('ampiov2.read'),function(req,res){
             // Separate client, so retained states re-sent on subscribe do not reach IN nodes
@@ -331,9 +337,12 @@ module.exports = function(RED) {
             const rpcRequest = 'rpc/v2/request/ampio-mqtt/' + rpcId;
             const rpcResponse = 'rpc/v2/response/ampio-mqtt/' + rpcId;
             const topics = [];
+            const legacyTopics = [];
             let rpcDevices = null;
+            let apiDevices = null;
+            let apiWaitOver = false;
+            let collecting = true;
             let finished = false;
-            let collecting = false;
             function finish(status, body){
                 if(finished){
                     return;
@@ -344,45 +353,57 @@ module.exports = function(RED) {
                 res.status(status).json(body);
             }
             function tryFinish(){
-                if(rpcDevices && !collecting){
-                    finish(200, au.discover_devices(rpcDevices, topics));
+                if(rpcDevices && (apiDevices || apiWaitOver) && !collecting){
+                    finish(200, au.discover_devices(rpcDevices, topics, legacyTopics, apiDevices));
+                }
+            }
+            function parse(message, what){
+                try{
+                    return JSON.parse(message);
+                }
+                catch(err){
+                    node.warn("Invalid " + what + " response: " + err.message);
+                    return {};
                 }
             }
             client.on('message', function(topic, message){
                 if(topic === rpcResponse){
-                    try{
-                        const data = JSON.parse(message);
-                        if(data.id !== rpcId){
-                            return;
-                        }
-                        rpcDevices = (data.result && data.result.devices) || [];
+                    const data = parse(message, 'get_devices');
+                    if(data.id !== undefined && data.id !== rpcId){
+                        return;
                     }
-                    catch(err){
-                        node.warn("Invalid get_devices response: " + err.message);
-                        rpcDevices = [];
-                    }
+                    rpcDevices = (data.result && data.result.devices) || [];
+                    tryFinish();
+                }
+                else if(topic === DEVICE_LIST_RESPONSE){
+                    apiDevices = parse(message, 'device_api list').devices || [];
                     tryFinish();
                 }
                 else if(message.length > 0){
-                    topics.push(topic);
+                    (topic.startsWith('ampio/') ? legacyTopics : topics).push(topic);
                 }
             });
             client.on('error', function(err){
                 finish(502, "MQTT error: " + err.message);
             });
             client.on('connect', function(){
-                client.subscribe([rpcResponse, STATE_TOPICS], function(err){
+                client.subscribe([rpcResponse, DEVICE_LIST_RESPONSE, STATE_TOPICS, LEGACY_STATE_TOPICS], function(err){
                     if(err){
                         finish(500, "Subscribe failed: " + err.message);
                         return;
                     }
                     // retained states arrive right after subscribe, give them a moment
-                    collecting = true;
                     setTimeout(function(){
                         collecting = false;
                         tryFinish();
                     }, 500);
+                    // legacy names are optional, do not wait for them longer than DISCOVERY_TIME
+                    setTimeout(function(){
+                        apiWaitOver = true;
+                        tryFinish();
+                    }, DISCOVERY_TIME);
                     client.publish(rpcRequest, JSON.stringify({jsonrpc: "2.0", method: "get_devices", params: {}, id: rpcId}));
+                    client.publish(DEVICE_LIST_REQUEST, '');
                 });
             });
             const timer = setTimeout(function(){
@@ -392,8 +413,12 @@ module.exports = function(RED) {
                 }
                 // no get_devices answer, fall back to retained states only
                 node.warn("get_devices timeout, devices discovered without names");
-                finish(200, au.discover_devices([], topics));
+                finish(200, au.discover_devices([], topics, legacyTopics, apiDevices));
             }, DISCOVERY_TIME * 2);
+        });
+
+        RED.httpAdmin.get('/ampio-v2/'+node_id+'/legacydefs', RED.auth.needsPermission('ampiov2.read'),function(req,res){
+            res.json(require('./db/legacytypes.json'));
         });
 
         // leaf types and attributes, generated from Ampio Designer by tools/extract-designer-defs.js

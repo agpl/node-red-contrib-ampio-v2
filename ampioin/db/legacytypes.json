@@ -1,0 +1,22 @@
+{
+    "i": {"label": "Digital input", "rw": "R", "hint": "0 / 1"},
+    "o": {"label": "Digital output", "rw": "RW", "hint": "0 / 1, ON / OFF, or 0 .. 255 for analog outputs"},
+    "a": {"label": "Analog output", "rw": "RW", "set": "o", "hint": "0 .. 255"},
+    "f": {"label": "Flag", "rw": "RW", "hint": "0 / 1"},
+    "t": {"label": "Temperature", "rw": "R", "hint": "°C"},
+    "rs": {"label": "Zone set temperature", "rw": "RW", "hint": "°C, ex. 19"},
+    "rsdn": {"label": "Zone set day/night temperature", "rw": "W", "with": "rs", "hint": "day,night, ex. 19,20"},
+    "rm": {"label": "Zone mode", "rw": "W", "with": "rs", "hint": "0 = calendar, 1 = manual, 2 = manual2, 3 = holiday, 4 = lock"},
+    "afu8": {"label": "Analog flag (8 bit)", "rw": "R", "hint": "0 .. 255"},
+    "afi16": {"label": "Analog flag (16 bit)", "rw": "R", "hint": "-32768 .. 32767"},
+    "au16l": {"label": "Sensor value (16 bit)", "rw": "R", "hint": "M-SENS: 1 humidity %, 2 abs. pressure hPa, 3 loudness dB, 4 lux, 5 IAQ, 6 rel. pressure hPa, 7 CO2 ppm"},
+    "au32": {"label": "Value (32 bit)", "rw": "R"},
+    "bi": {"label": "Binary input", "rw": "R", "hint": "0 / 1"},
+    "bo": {"label": "Binary output", "rw": "R", "hint": "0 / 1"},
+    "rgbw": {"label": "RGBW colour", "rw": "R", "hint": "R,G,B,W ex. 255,0,0,0"},
+    "armed": {"label": "Alarm zone armed", "rw": "R", "hint": "0 / 1"},
+    "alarm": {"label": "Alarm zone alarm", "rw": "R", "hint": "0 / 1"},
+    "entrytime": {"label": "Alarm zone entry time", "rw": "R", "hint": "0 / 1"},
+    "exittime": {"label": "Alarm zone exit time", "rw": "R", "hint": "0 / 1"},
+    "exittime10": {"label": "Alarm zone exit time (over 10 s)", "rw": "R", "hint": "0 / 1"}
+}

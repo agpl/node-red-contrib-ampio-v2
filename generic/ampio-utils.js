@@ -200,9 +200,68 @@ exports.device_info = function (dev) {
     return info;
 }
 
-// get_devices result + retained state topics -> [{mac, name, leafs: [{type, attribute, count, names}]}]
-// Types and channel counts come from deviceConfigTable, attributes from retained states (default 0).
-exports.discover_devices = function (rpcDevices, topics) {
+// Legacy API for older CAN devices: ampio/from/<MAC>/state/<valtype>/<index>, ampio/to/<MAC>/<valtype>/<index>/cmd
+// MAC is uppercase hex, index counts from 1 (au32 from 0), payload is a plain string.
+const LEGACY_SET_VALTYPE = {a: 'o'};
+
+exports.legacy_state_topic = function (mac, valtype, index) {
+    return 'ampio/from/' + String(mac).toUpperCase() + '/state/' + valtype + '/' + index;
+}
+
+exports.legacy_set_topic = function (mac, valtype, index) {
+    return 'ampio/to/' + String(mac).toUpperCase() + '/' + (LEGACY_SET_VALTYPE[valtype] || valtype) + '/' + index + '/cmd';
+}
+
+exports.decode_legacy_value = function (payload) {
+    const s = payload.toString('utf-8');
+    return s.trim() !== '' && !isNaN(s) ? Number(s) : s;
+}
+
+exports.encode_legacy_value = function (value) {
+    if (typeof value === 'boolean') {
+        return value ? '1' : '0';
+    }
+    if (value !== null && typeof value === 'object') {
+        return JSON.stringify(value);
+    }
+    return String(value);
+}
+
+// device_api list "descriptions": records [len u16][code u16][index u16][4 bytes][utf-8 name], little endian.
+// Description code -> [legacy valtype, offset added to index]
+const LEGACY_DESCRIPTION_CODES = {
+    3: [['t', 1]], 6: [['f', 1]], 7: [['afu8', 1]], 8: [['afi16', 1]], 10: [['i', 1]],
+    12: [['o', 1]], 16: [['o', 1], ['a', 1]], 44: [['a', 1], ['o', 1]], 17: [['rs', 1]],
+    29: [['au32', 0]], 38: [['au16l', 1]], 39: [['au16l', 4]], 40: [['au16l', 7]]
+};
+
+exports.parse_legacy_descriptions = function (b64) {
+    const buf = Buffer.from(b64 || '', 'base64');
+    const names = {};
+    let i = 0;
+    while (i + 10 <= buf.length) {
+        const len = buf.readUInt16LE(i);
+        if (len < 10 || i + len > buf.length) {
+            break;
+        }
+        const name = buf.slice(i + 10, i + len).toString('utf-8').trim();
+        (LEGACY_DESCRIPTION_CODES[buf.readUInt16LE(i + 2)] || []).forEach(function (map) {
+            if (name && name !== '.') {
+                const byType = names[map[0]] = names[map[0]] || {};
+                byType[buf.readUInt16LE(i + 4) + map[1]] = name;
+            }
+        });
+        i += len;
+    }
+    return names;
+}
+
+// get_devices result + retained state topics + device_api list ->
+//   [{mac, name, legacy, leafs: [{type, attribute, count, names}], legacyTypes: [{valtype, indexes, names}]}]
+// Types and channel counts come from deviceConfigTable, attributes from retained device/v1 states (default 0).
+// Legacy value types come from retained ampio/from states, their names from device_api descriptions.
+// Old CAN devices report no leafs (legacy: true), they are used through the legacy API.
+exports.discover_devices = function (rpcDevices, topics, legacyTopics, apiDevices) {
     const seen = {};
     topics.forEach(function (topic) {
         const p = topic.split('/');
@@ -213,11 +272,28 @@ exports.discover_devices = function (rpcDevices, topics) {
         const attrs = types[p[5]] = types[p[5]] || {};
         attrs[p[6]] = Math.max(attrs[p[6]] || 0, Number(p[7]) + 1);
     });
+    const legacySeen = {};
+    (legacyTopics || []).forEach(function (topic) {
+        const p = topic.split('/');
+        if (p.length !== 6 || p[3] !== 'state') {
+            return;
+        }
+        const mac = p[2].toLowerCase();
+        const valtypes = legacySeen[mac] = legacySeen[mac] || {};
+        (valtypes[p[4]] = valtypes[p[4]] || {})[p[5]] = true;
+    });
+    const apiInfo = {};
+    (apiDevices || []).forEach(function (dev) {
+        apiInfo[(dev.macUser || dev.macProd).toString(16)] = {
+            name: dev.name ? Buffer.from(dev.name, 'base64').toString('utf-8') : '',
+            names: exports.parse_legacy_descriptions(dev.descriptions)
+        };
+    });
     const devices = {};
     rpcDevices.map(exports.device_info).forEach(function (info) {
         devices[info.mac] = info;
     });
-    Object.keys(seen).forEach(function (mac) {
+    Object.keys(seen).concat(Object.keys(legacySeen)).forEach(function (mac) {
         devices[mac] = devices[mac] || {mac: mac, name: '', leafs: [], channels: {}};
     });
     return Object.keys(devices).sort().map(function (mac) {
@@ -237,6 +313,14 @@ exports.discover_devices = function (rpcDevices, topics) {
                 leafs.push({type: type, attribute: attribute, count: counts[type], names: info.channels[type] || {}});
             });
         });
-        return {mac: mac, name: info.name, leafs: leafs};
-    }).filter(function (dev) { return dev.leafs.length > 0; });
+        const api = apiInfo[mac] || {name: '', names: {}};
+        const legacyTypes = Object.keys(legacySeen[mac] || {}).sort().map(function (valtype) {
+            return {
+                valtype: valtype,
+                indexes: Object.keys(legacySeen[mac][valtype]).map(Number).sort(function (a, b) { return a - b; }),
+                names: api.names[valtype] || {}
+            };
+        });
+        return {mac: mac, name: info.name || api.name, legacy: leafs.length === 0, leafs: leafs, legacyTypes: legacyTypes};
+    });
 }

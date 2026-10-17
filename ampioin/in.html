@@ -4,8 +4,14 @@
         color: '#d4d9db',
         defaults: {
             mac: {value:"", required:true},
-            devtype: {value:"", required:true, validate:RED.validators.number()},
-            attribute: {value:0, required:true, validate:RED.validators.number()},
+            // device/v1 target: devtype + attribute + index; legacy ampio/ target: valtype + index
+            devtype: {value:"", validate:function(v){
+                // while the dialog is open check the edited valtype, otherwise the saved one
+                const valtype = $('#node-input-valtype').length ? $('#node-input-valtype').val() : this.valtype;
+                return !!valtype || RED.validators.number()(v);
+            }},
+            valtype: {value:""},
+            attribute: {value:0, validate:RED.validators.number()},
             index: {value:0, required:true, validate:RED.validators.number()},
             name: {value:""},
             retainignore: {value:false},
@@ -21,17 +27,21 @@
             const node = this;
             const ACCESS = 'R'; // 'R' for IN, 'W' for OUT
             let Defs = {};
+            let LegacyDefs = {};
             let Devices = {};
             let Order = [];
 
-            // attributes of a type usable in this direction, from Designer definitions
+            function canUse(rw){
+                return !!rw && rw.indexOf(ACCESS) !== -1;
+            }
+            // attributes of a device/v1 type usable in this direction, from Designer definitions
             function defAttrs(type){
                 const def = Defs[type];
                 if(!def){
                     return [];
                 }
                 return Object.keys(def.attributes).map(Number).filter(function(a){
-                    return def.attributes[a].rw.indexOf(ACCESS) !== -1;
+                    return canUse(def.attributes[a].rw);
                 });
             }
             function attrDef(type, attr){
@@ -40,22 +50,35 @@
             function unique(list){
                 return list.filter(function(x, i, a){ return a.indexOf(x) === i; });
             }
+            function device(){
+                return Devices[$('#node-input-mac').val()];
+            }
+            // null = device does not report its leafs (not discovered or legacy), all types are offered
             function leafs(){
-                const dev = Devices[$('#node-input-mac').val()];
-                return dev ? dev.leafs : null;
+                const dev = device();
+                return dev && !dev.legacy ? dev.leafs : null;
             }
             function leafOf(type){
                 const l = leafs();
                 return l && l.find(function(x){ return x.type === type; });
             }
-            function range(n){
-                return Array.from({length: n}, function(_, i){ return i; });
+            function legacyOf(valtype){
+                const dev = device();
+                return dev && (dev.legacyTypes || []).find(function(x){ return x.valtype === valtype; });
             }
-            // fill select with values; saved value is kept selectable only when the device was not discovered
-            function fill(id, values, label, saved){
+            function range(from, n){
+                return Array.from({length: n}, function(_, i){ return from + i; });
+            }
+            // selected type: {legacy: bool, type: Number|String}
+            function selected(){
+                const v = $('#ampio-type').val() || '';
+                return v.indexOf('legacy:') === 0 ? {legacy: true, type: v.slice(7)} : {legacy: false, type: Number(v.slice(3))};
+            }
+            // fill select with values; saved value stays selectable when the device does not report its channels
+            function fill(id, values, label, saved, keepSaved){
                 const sel = $(id).empty();
-                const has = saved !== '' && saved !== undefined;
-                if(has && !leafs() && values.indexOf(Number(saved)) === -1){
+                const has = saved !== '' && saved !== undefined && saved !== null;
+                if(has && keepSaved && values.indexOf(Number(saved)) === -1){
                     values = [Number(saved)].concat(values);
                 }
                 values.forEach(function(v){
@@ -66,60 +89,115 @@
                 }
             }
             function FillTypes(){
+                const dev = device();
                 const l = leafs();
-                let types = l ? unique(l.map(function(x){ return x.type; })) : Object.keys(Defs).map(Number);
-                // hide types which have nothing to read (IN) or write (OUT)
+                const sel = $('#ampio-type').empty();
+                // device/v1 types, hidden when they have nothing to read (IN) or write (OUT)
+                let types = l ? unique(l.map(function(x){ return x.type; })) : (dev && dev.legacy ? [] : Object.keys(Defs).map(Number));
                 types = types.filter(function(t){ return !Defs[t] || defAttrs(t).length; });
-                fill('#node-input-devtype', types, function(t){
-                    return t + ' - ' + (Defs[t] ? Defs[t].label : 'Unknown');
-                }, node.devtype);
-                FillAttributes();
+                // legacy value types: those seen on the device, plus write-only ones that come with them (ex. rm with rs)
+                let legacy = dev ? (dev.legacyTypes || []).map(function(x){ return x.valtype; }) : Object.keys(LegacyDefs);
+                Object.keys(LegacyDefs).forEach(function(v){
+                    if(LegacyDefs[v].with && legacy.indexOf(LegacyDefs[v].with) !== -1 && legacy.indexOf(v) === -1){
+                        legacy.push(v);
+                    }
+                });
+                legacy = legacy.filter(function(v){ return !LegacyDefs[v] || canUse(LegacyDefs[v].rw); });
+                const saved = node.valtype ? 'legacy:' + node.valtype : (node.devtype !== '' ? 'v1:' + node.devtype : '');
+                if(types.length){
+                    const g = $('<optgroup>').attr('label', 'device/v1').appendTo(sel);
+                    types.forEach(function(t){
+                        $('<option>').val('v1:' + t).text(t + ' - ' + (Defs[t] ? Defs[t].label : 'Unknown')).appendTo(g);
+                    });
+                }
+                if(legacy.length){
+                    const g = $('<optgroup>').attr('label', 'Legacy (ampio/...)').appendTo(sel);
+                    legacy.forEach(function(v){
+                        $('<option>').val('legacy:' + v).text(v + ' - ' + (LegacyDefs[v] ? LegacyDefs[v].label : 'Unknown')).appendTo(g);
+                    });
+                }
+                if(saved && !sel.find('option').filter(function(){ return this.value === saved; }).length && !dev){
+                    $('<option>').val(saved).text(saved.replace(/^\w+:/, '')).prependTo(sel);
+                }
+                if(saved && sel.find('option').filter(function(){ return this.value === saved; }).length){
+                    sel.val(saved);
+                }
+                else if(dev && dev.legacy && legacy.length){
+                    sel.val('legacy:' + legacy[0]);
+                }
+                TypeChanged();
             }
-            function FillAttributes(){
-                const type = Number($('#node-input-devtype').val());
+            function TypeChanged(){
+                const s = selected();
+                $('#node-input-valtype').val(s.legacy ? s.type : '');
+                $('#node-input-devtype').val(s.legacy ? '' : (isNaN(s.type) ? '' : s.type));
+                $('#ampio-attribute-row').toggle(!s.legacy);
+                if(s.legacy){
+                    $('#node-input-attribute').empty().append($('<option>').val(0).text('0'));
+                    FillIndexes();
+                    return;
+                }
                 const l = leafs();
-                const seen = l ? l.filter(function(x){ return x.type === type; }).map(function(x){ return x.attribute; }) : [];
-                let attrs = unique(defAttrs(type).concat(Defs[type] ? [] : seen));
+                const seen = l ? l.filter(function(x){ return x.type === s.type; }).map(function(x){ return x.attribute; }) : [];
+                let attrs = unique(defAttrs(s.type).concat(Defs[s.type] ? [] : seen));
                 if(!attrs.length){
                     attrs = [0];
                 }
                 attrs.sort(function(a, b){ return a - b; });
                 fill('#node-input-attribute', attrs, function(a){
-                    const d = attrDef(type, a);
+                    const d = attrDef(s.type, a);
                     return a + (d && d.label ? ' - ' + d.label : '') + (d && d.rw ? ' [' + d.rw + ']' : '');
-                }, node.attribute);
+                }, node.attribute, !l);
                 FillIndexes();
             }
             function FillIndexes(){
-                const type = Number($('#node-input-devtype').val());
-                const leaf = leafOf(type);
-                const names = leaf ? leaf.names : {};
-                fill('#node-input-index', range(leaf ? leaf.count : 32), function(i){
-                    return i + (names[i] ? ': ' + names[i] : ' (channel ' + (i + 1) + ')');
-                }, node.index);
+                const s = selected();
+                let indexes, names, keep;
+                if(s.legacy){
+                    const lt = legacyOf(s.type) || legacyOf(LegacyDefs[s.type] && LegacyDefs[s.type].with);
+                    indexes = lt ? lt.indexes : range(1, 32);
+                    names = lt ? lt.names : {};
+                    keep = !lt;
+                } else {
+                    const leaf = leafOf(s.type);
+                    indexes = range(0, leaf ? leaf.count : 32);
+                    names = leaf ? leaf.names : {};
+                    keep = !leaf;
+                }
+                fill('#node-input-index', indexes, function(i){
+                    return i + (names[i] ? ': ' + names[i] : '');
+                }, node.index, keep);
                 FillHints();
             }
             function FillHints(){
-                const type = Number($('#node-input-devtype').val());
-                const d = attrDef(type, Number($('#node-input-attribute').val()));
-                const leaf = leafOf(type);
-                const desc = leaf && leaf.names[$('#node-input-index').val()];
-                $('#node-input-name').attr('placeholder', desc || 'Name');
-                let hint = '';
-                if(d){
-                    if(d.enum){
-                        hint = Object.keys(d.enum).map(function(k){ return k + ' = ' + d.enum[k]; }).join(', ');
-                    } else if(d.fields){
-                        hint = 'object {' + d.fields.join(', ') + '}';
-                    } else if(d.kind === 'binary'){
-                        hint = '0 / 1 (true / false)';
-                    } else if(d.min !== undefined){
-                        hint = d.min + ' .. ' + d.max + (d.unit ? ' ' + d.unit : '');
-                    } else {
-                        hint = d.kind;
+                const s = selected();
+                const index = $('#node-input-index').val();
+                let desc, hint = '';
+                if(s.legacy){
+                    const lt = legacyOf(s.type) || legacyOf(LegacyDefs[s.type] && LegacyDefs[s.type].with);
+                    desc = lt && lt.names[index];
+                    hint = LegacyDefs[s.type] && LegacyDefs[s.type].hint || '';
+                } else {
+                    const d = attrDef(s.type, Number($('#node-input-attribute').val()));
+                    const leaf = leafOf(s.type);
+                    desc = leaf && leaf.names[index];
+                    if(d){
+                        if(d.enum){
+                            hint = Object.keys(d.enum).map(function(k){ return k + ' = ' + d.enum[k]; }).join(', ');
+                        } else if(d.fields){
+                            hint = 'object {' + d.fields.join(', ') + '}';
+                        } else if(d.kind === 'binary'){
+                            hint = '0 / 1 (true / false)';
+                        } else if(d.min !== undefined){
+                            hint = d.min + ' .. ' + d.max + (d.unit ? ' ' + d.unit : '');
+                        } else {
+                            hint = d.kind;
+                        }
                     }
                 }
+                $('#node-input-name').attr('placeholder', desc || 'Name');
                 $('#ampio-value-hint').text(hint ? 'Value: ' + hint : '').toggle(!!hint);
+                $('#ampio-legacy-hint').toggle(s.legacy);
             }
             function GetDevices(){
                 const cfgid = $('#node-input-server').val();
@@ -128,32 +206,36 @@
                 $.getJSON('ampio-v2/'+cfgid+'/leafdefs', function(json){
                     Defs = json;
                 }).always(function(){
-                    $.getJSON('ampio-v2/'+cfgid+'/devices/v1/list')
-                    .done(function(data){
-                        Devices = {};
-                        Order = [];
-                        data.forEach(function(dev){
-                            Devices[dev.mac] = dev;
-                            Order.push(dev.mac);
+                    $.getJSON('ampio-v2/'+cfgid+'/legacydefs', function(json){
+                        LegacyDefs = json;
+                    }).always(function(){
+                        $.getJSON('ampio-v2/'+cfgid+'/devices/v1/list')
+                        .done(function(data){
+                            Devices = {};
+                            Order = [];
+                            data.forEach(function(dev){
+                                Devices[dev.mac] = dev;
+                                Order.push(dev.mac);
+                            });
+                        })
+                        .fail(function(xhr){
+                            RED.notify("Ampio: error loading devices (" + (xhr.responseJSON || xhr.status) + ")", "error");
+                        })
+                        .always(function(){
+                            sel.empty();
+                            if(node.mac && !Devices.hasOwnProperty(node.mac)){
+                                $('<option>').val(node.mac).text(node.mac + ' (not found)').appendTo(sel);
+                            }
+                            // Order keeps server order, object keys would put numeric-looking MACs first
+                            Order.forEach(function(mac){
+                                const dev = Devices[mac];
+                                $('<option>').val(mac).text(mac + (dev.name ? ' (' + dev.name + ')' : '') + (dev.legacy ? ' - legacy' : '')).appendTo(sel);
+                            });
+                            if(node.mac){
+                                sel.val(node.mac);
+                            }
+                            FillTypes();
                         });
-                    })
-                    .fail(function(xhr){
-                        RED.notify("Ampio: error loading devices (" + (xhr.responseJSON || xhr.status) + ")", "error");
-                    })
-                    .always(function(){
-                        sel.empty();
-                        if(node.mac && !Devices.hasOwnProperty(node.mac)){
-                            $('<option>').val(node.mac).text(node.mac + ' (not found)').appendTo(sel);
-                        }
-                        // Order keeps server order, object keys would put numeric-looking MACs first
-                        Order.forEach(function(mac){
-                            const dev = Devices[mac];
-                            $('<option>').val(mac).text(mac + (dev.name ? ' (' + dev.name + ')' : '')).appendTo(sel);
-                        });
-                        if(node.mac){
-                            sel.val(node.mac);
-                        }
-                        FillTypes();
                     });
                 });
             }
@@ -161,7 +243,7 @@
             GetDevices();
             $("#node-input-lookup-devices").on("click", GetDevices);
             $("#node-input-mac").on('change', FillTypes);
-            $("#node-input-devtype").on('change', FillAttributes);
+            $("#ampio-type").on('change', TypeChanged);
             $("#node-input-attribute").on('change', FillHints);
             $("#node-input-index").on('change', FillHints);
         }
@@ -185,14 +267,17 @@
         </div>
     </div>
     <div class="form-row">
-        <label for="node-input-devtype"><i class="icon-tag"></i> Type</label>
-        <select id="node-input-devtype" style="width: 70%;"></select>
+        <label for="ampio-type"><i class="icon-tag"></i> Type</label>
+        <select id="ampio-type" style="width: 70%;"></select>
+        <input type="hidden" id="node-input-devtype">
+        <input type="hidden" id="node-input-valtype">
     </div>
-    <div class="form-row">
+    <div class="form-row" id="ampio-attribute-row">
         <label for="node-input-attribute"><i class="icon-tag"></i> Attribute</label>
         <select id="node-input-attribute" style="width: 70%;"></select>
     </div>
     <div class="form-tips" id="ampio-value-hint" style="display: none;"></div>
+    <div class="form-tips" id="ampio-legacy-hint" style="display: none;"><b>Legacy API:</b> uses <code>ampio/from|to/&lt;MAC&gt;/...</code> topics with plain values, for older CAN devices.</div>
     <div class="form-row">
         <label for="node-input-index"><i class="icon-tag"></i> Index</label>
         <select id="node-input-index" style="width: 70%;"></select>
@@ -219,13 +304,19 @@
         <dt>devtype <span class="property-type">number</span></dt>
         <dd>type code (ex. <code>128</code> BIN_IN, <code>129</code> REL, <code>130</code> TEMPERATURE).</dd>
         <dt>attribute <span class="property-type">number</span></dt>
-        <dd>attribute number.</dd>
+        <dd>attribute number (device/v1 only).</dd>
+        <dt>valtype <span class="property-type">string</span></dt>
+        <dd>legacy value type, only for legacy types (then <code>devtype</code> and <code>attribute</code> are not set). Numeric legacy values are converted to numbers.</dd>
         <dt>index <span class="property-type">number</span></dt>
         <dd>channel index, counted from <code>0</code>.</dd>
     </dl>
     <h3>Details</h3>
     <h4>Target device (required)</h4>
     Click the search icon to discover devices. Devices, types and channel descriptions come from the server (<code>get_devices</code> over <code>rpc/v2</code>), attributes from retained states (<code>device/v1/state/leaf/#</code>).
+    Older CAN devices which are not available on <code>device/v1</code> are listed with <code>- legacy</code> and use the legacy API.
+    <h4>Legacy types</h4>
+    The <i>Legacy (ampio/...)</i> group of the Type field lists value types of the legacy API seen on the device (ex. <code>f</code> flags, <code>i</code> inputs, <code>o</code> outputs, <code>t</code> temperatures, <code>au16l</code> M-SENS sensors).
+    They use <code>ampio/from/&lt;MAC&gt;/state/&lt;type&gt;/&lt;index&gt;</code> and <code>ampio/to/&lt;MAC&gt;/&lt;type&gt;/&lt;index&gt;/cmd</code> with plain values; indexes count from <code>1</code>.
     <h4>Type (required)</h4>
     Type of the value to read. Only types discovered on the selected device are listed. Types with nothing to read are hidden.
     <h4>Attribute (required)</h4>

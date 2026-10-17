@@ -6,6 +6,7 @@ module.exports = function(RED) {
         const node = this;
 
         node.mac = config.mac;
+        node.valtype = config.valtype || '';
         node.devtype = Number(config.devtype);
         node.attribute = Number(config.attribute) || 0;
         node.index = Number(config.index) || 0;
@@ -17,7 +18,15 @@ module.exports = function(RED) {
             return;
         }
 
-        node.SubPath = au.build_topic('state', node.mac, node.devtype, node.attribute, node.index);
+        // valtype set = older CAN device on the legacy ampio/ API
+        const legacy = node.valtype !== '';
+        node.SubPath = legacy
+            ? au.legacy_state_topic(node.mac, node.valtype, node.index)
+            : au.build_topic('state', node.mac, node.devtype, node.attribute, node.index);
+        const decode = legacy ? au.decode_legacy_value : au.decode_value;
+        const target = legacy
+            ? {mac: node.mac, valtype: node.valtype, index: node.index}
+            : {mac: node.mac, devtype: node.devtype, attribute: node.attribute, index: node.index};
 
         node.status({fill:"red",shape:"ring",text:"node-red:common.status.disconnected"});
         node.brokerConn.register(node);
@@ -27,19 +36,12 @@ module.exports = function(RED) {
             }
             let value;
             try {
-                value = au.decode_value(payload);
+                value = decode(payload);
             } catch (err) {
                 node.warn("Invalid payload on " + topic + ": " + err.message);
                 return;
             }
-            node.send({
-                topic: topic,
-                payload: value,
-                mac: node.mac,
-                devtype: node.devtype,
-                attribute: node.attribute,
-                index: node.index
-            });
+            node.send(Object.assign({topic: topic, payload: value}, target));
         }, node.id);
         if (node.brokerConn.connected) {
             node.status({fill:"green",shape:"dot",text:"node-red:common.status.connected"});

@@ -66,6 +66,13 @@ function unitTests() {
     ok(desc.name === 'Salon' && desc.channels[129][1] === 'Lampa żółta', 'parse_descriptions');
     const defs = require(path.join(ROOT, 'ampioin/db/leafdefs.json'));
     ok(defs[136] && defs[136].attributes[2].enum[2] === 'Open' && defs[129].attributes[0].rw === 'RW', 'leafdefs.json has blind enum and relay access');
+    ok(au.legacy_state_topic('1fe5c', 'f', 3) === 'ampio/from/1FE5C/state/f/3', 'legacy_state_topic uppercases MAC');
+    ok(au.legacy_set_topic('1dd55', 'a', 2) === 'ampio/to/1DD55/o/2/cmd' && au.legacy_set_topic('1dd55', 'f', 2) === 'ampio/to/1DD55/f/2/cmd', 'legacy_set_topic, analog written via o');
+    ok(au.decode_legacy_value(Buffer.from('19.0')) === 19 && au.decode_legacy_value(Buffer.from('0,0,0,0')) === '0,0,0,0', 'decode_legacy_value');
+    ok(au.encode_legacy_value(true) === '1' && au.encode_legacy_value(21.5) === '21.5', 'encode_legacy_value');
+    const rec = (code, idx, name) => { const n = Buffer.from(name); const b = Buffer.alloc(10 + n.length); b.writeUInt16LE(b.length, 0); b.writeUInt16LE(code, 2); b.writeUInt16LE(idx, 4); n.copy(b, 10); return b; };
+    const ld = au.parse_legacy_descriptions(Buffer.concat([rec(1, 0, '.'), rec(6, 0, 'Obecność'), rec(39, 2, 'Ciśnienie względne'), rec(99, 0, 'x')]).toString('base64'));
+    ok(ld.f[1] === 'Obecność' && ld.au16l[6] === 'Ciśnienie względne' && Object.keys(ld).length === 2, 'parse_legacy_descriptions');
     return s17;
 }
 
@@ -105,21 +112,52 @@ async function integrationTests(s17) {
     ok(seen.some(([t, p]) => t === 'device/v1/set/leaf/1a2b/134/0/1' && p === '{"v":{"h":120,"s":100,"v":50},"time":30}'), 'OUT overrides, object payload and time');
     ok(badErr instanceof Error, 'OUT rejects invalid devtype');
 
+    const inL = mk('Ampio v2 IN', { id: 'inL', server: 'cfg', mac: '1fe5c', valtype: 't', devtype: '', index: '2', retainignore: false });
+    const outL = mk('Ampio v2 OUT', { id: 'outL', server: 'cfg', mac: '1fe5c', valtype: 'f', devtype: '', index: '5' });
+    ext.subscribe('ampio/to/#');
+    await wait(200);
+    ext.publish('ampio/from/1FE5C/state/t/2', '21.5');
+    ext.publish('ampio/from/1FE5C/state/t/3', '9');
+    outL.emit('input', { payload: true }, null, () => {});
+    outN.emit('input', { payload: 1, valtype: 'o' }, null, () => {});
+    outL.emit('input', { payload: 1, devtype: 139, attribute: 0 }, null, () => {});
+    await wait(200);
+    ok(inL.sent && inL.sent.length === 1 && inL.sent[0].payload === 21.5 && inL.sent[0].valtype === 't' && inL.sent[0].devtype === undefined, 'legacy IN receives number from ampio/from');
+    ok(seen.some(([t, p]) => t === 'ampio/to/1FE5C/f/5/cmd' && p === '1'), 'legacy OUT sends to ampio/to/.../cmd');
+    ok(seen.some(([t, p]) => t === 'ampio/to/1A2B/o/0/cmd' && p === '1'), 'msg.valtype switches OUT to legacy API');
+    ok(seen.some(([t, p]) => t === 'device/v1/set/leaf/1fe5c/139/0/5' && p === '{"v":1}'), 'msg.devtype switches legacy OUT to device/v1');
+
     // fake ampio-mqtt rpc: macProd differs from macUser, topics use macUser
     ext.on('message', (t, p) => {
         if (!t.startsWith('rpc/v2/request/ampio-mqtt/')) { return; }
         const r = JSON.parse(p);
         ok(r.method === 'get_devices' && r.id < 2147483647 && t.endsWith('/' + r.id), 'rpc request ' + p);
         ext.publish(t.replace('request', 'response'), JSON.stringify({ jsonrpc: '2.0', id: r.id, result: { devices: [
+            { macProd: 0x5555, macUser: 0x5555, name: Buffer.from('M-SENS stary').toString('base64'), deviceConfigTable: '', sections: [] },
             { macProd: 0x9999, macUser: 0x1a2b, deviceConfigTable: Buffer.from([1, 0x81, 8, 1, 0x88, 5]).toString('base64'), sections: [{ type: 17, length: s17.length, data: s17.toString('base64') }] },
         ] } }));
     });
+    ext.subscribe('device_api/to/list');
+    ext.publish('ampio/from/5555/state/f/1', '0', { retain: true });
+    ext.publish('ampio/from/5555/state/f/3', '1', { retain: true });
+    ext.publish('ampio/from/5555/state/rs/1', '19.0', { retain: true });
+    ext.on('message', (t) => {
+        if (t !== 'device_api/to/list') { return; }
+        const n = Buffer.from('Obecność'); const b = Buffer.alloc(10 + n.length); b.writeUInt16LE(b.length, 0); b.writeUInt16LE(6, 2); b.writeUInt16LE(2, 4); n.copy(b, 10);
+        ext.publish('device_api/from/list', JSON.stringify({ devices: [{ macProd: 0x5555, macUser: 0x5555, name: Buffer.from('M-SENS stary').toString('base64'), descriptions: b.toString('base64') }] }));
+    });
+    await wait(200);
     const before = (keep.sent || []).length;
     const res = await request('/ampio-v2/cfg/devices/v1/list');
     const d = res.body && res.body.find(x => x.mac === '1a2b');
-    ok(res.code === 200 && d && d.name === 'Salon', 'discovery uses macUser and device name');
+    ok(res.code === 200 && d && d.name === 'Salon' && d.legacy === false, 'discovery uses macUser and device name');
     ok(d && d.leafs.some(l => l.type === 129 && l.count === 8 && l.names[1] === 'Lampa żółta'), 'discovery channel names');
     ok(d && d.leafs.some(l => l.type === 136 && l.attribute === 2 && l.count === 5), 'discovery attributes from retained states');
+    const legacy = res.body && res.body.find(x => x.mac === '5555');
+    ok(legacy && legacy.legacy === true && legacy.name === 'M-SENS stary' && legacy.leafs.length === 0, 'discovery lists legacy devices');
+    const lf = legacy && legacy.legacyTypes.find(x => x.valtype === 'f');
+    ok(lf && JSON.stringify(lf.indexes) === '[1,3]' && lf.names[3] === 'Obecność', 'discovery legacy types, indexes and names');
+    ok(legacy && legacy.legacyTypes.some(x => x.valtype === 'rs'), 'discovery legacy zone type');
     ok((keep.sent || []).length === before, 'discovery does not re-trigger IN nodes');
 
     const defsRes = await request('/ampio-v2/cfg/leafdefs');
