@@ -97,35 +97,141 @@ exports.decode_value = function (payload) {
     return data.v;
 }
 
-// Response of device_api/to/list -> {mac: name}, mac being lowercase hex of macProd as used in topics
-exports.device_names = function (data) {
-    const names = {};
-    (data.devices || []).forEach(function (dev) {
-        names[dev.macProd.toString(16)] = Buffer.from(dev.name || '', 'base64').toString('utf-8');
-    });
-    return names;
+// Minimal protobuf reader: [{field, value}], value is Number for varints, Buffer for length-delimited
+function pb_fields(buf) {
+    const out = [];
+    let i = 0;
+    function varint() {
+        let r = 0, mul = 1, b;
+        do {
+            b = buf[i++];
+            r += (b & 0x7f) * mul;
+            mul *= 128;
+        } while (b & 0x80);
+        return r;
+    }
+    while (i < buf.length) {
+        const key = varint();
+        const wt = key % 8;
+        const field = Math.floor(key / 8);
+        if (wt === 0) {
+            out.push({field: field, value: varint()});
+        } else if (wt === 2) {
+            const len = varint();
+            out.push({field: field, value: buf.slice(i, i + len)});
+            i += len;
+        } else if (wt === 5) {
+            i += 4;
+        } else if (wt === 1) {
+            i += 8;
+        } else {
+            throw new Error('unsupported protobuf wire type ' + wt);
+        }
+    }
+    return out;
 }
 
-// Retained state topics -> [{mac, name, leafs: [{type, attribute, count}]}]
-exports.discover_devices = function (topics, names) {
-    const devices = {};
+function pb_get(fields, field) {
+    const f = fields.find(function (x) { return x.field === field; });
+    return f ? f.value : undefined;
+}
+
+// deviceConfigTable: 3-byte records, record 01 <type> <count> describes a leaf type
+exports.parse_config_table = function (b64) {
+    const buf = Buffer.from(b64 || '', 'base64');
+    const leafs = [];
+    for (let i = 0; i + 2 < buf.length; i += 3) {
+        if (buf[i] === 1) {
+            leafs.push({type: buf[i + 1], count: buf[i + 2]});
+        }
+    }
+    return leafs;
+}
+
+// Section 17 (protobuf): 1 = device name, 3 = repeated {1 = type, 2 = {1 = repeated {1 = index, 2 = {1 = name}}}}
+exports.parse_descriptions = function (b64) {
+    const result = {name: '', channels: {}};
+    const fields = pb_fields(Buffer.from(b64 || '', 'base64'));
+    const name = pb_get(fields, 1);
+    result.name = name ? name.toString('utf-8') : '';
+    fields.filter(function (f) { return f.field === 3; }).forEach(function (t) {
+        const tf = pb_fields(t.value);
+        const type = pb_get(tf, 1);
+        const list = pb_get(tf, 2);
+        const names = result.channels[type] = {};
+        if (!list) {
+            return;
+        }
+        pb_fields(list).filter(function (c) { return c.field === 1; }).forEach(function (c) {
+            const cf = pb_fields(c.value);
+            const desc = pb_get(cf, 2);
+            const label = desc ? pb_get(pb_fields(desc), 1) : undefined;
+            if (label && label.length) {
+                names[pb_get(cf, 1) || 0] = label.toString('utf-8');
+            }
+        });
+    });
+    return result;
+}
+
+// get_devices device -> {mac, name, leafs: [{type, count}], channels: {type: {index: name}}}
+exports.device_info = function (dev) {
+    const info = {
+        mac: dev.macProd.toString(16),
+        name: dev.name ? Buffer.from(dev.name, 'base64').toString('utf-8') : '',
+        leafs: exports.parse_config_table(dev.deviceConfigTable),
+        channels: {}
+    };
+    const section = (dev.sections || []).find(function (s) { return s.type === 17 && s.length > 0; });
+    if (section) {
+        try {
+            const desc = exports.parse_descriptions(section.data);
+            info.name = info.name || desc.name;
+            info.channels = desc.channels;
+        } catch (err) {
+            // descriptions are optional, device stays usable without names
+        }
+    }
+    return info;
+}
+
+// get_devices result + retained state topics -> [{mac, name, leafs: [{type, attribute, count, names}]}]
+// Types and channel counts come from deviceConfigTable, attributes from retained states (default 0).
+exports.discover_devices = function (rpcDevices, topics) {
+    const seen = {};
     topics.forEach(function (topic) {
         const p = topic.split('/');
         if (p.length !== 8) {
             return;
         }
-        const leafs = devices[p[4]] = devices[p[4]] || {};
-        const key = p[5] + '/' + p[6];
-        leafs[key] = Math.max(leafs[key] || 0, Number(p[7]) + 1);
+        const types = seen[p[4]] = seen[p[4]] || {};
+        const attrs = types[p[5]] = types[p[5]] || {};
+        attrs[p[6]] = Math.max(attrs[p[6]] || 0, Number(p[7]) + 1);
+    });
+    const devices = {};
+    rpcDevices.map(exports.device_info).forEach(function (info) {
+        devices[info.mac] = info;
+    });
+    Object.keys(seen).forEach(function (mac) {
+        devices[mac] = devices[mac] || {mac: mac, name: '', leafs: [], channels: {}};
     });
     return Object.keys(devices).sort().map(function (mac) {
-        return {
-            mac: mac,
-            name: names[mac] || '',
-            leafs: Object.keys(devices[mac]).map(function (key) {
-                const ta = key.split('/').map(Number);
-                return {type: ta[0], attribute: ta[1], count: devices[mac][key]};
-            })
-        };
-    });
+        const info = devices[mac];
+        const retained = seen[mac] || {};
+        const counts = {};
+        info.leafs.forEach(function (l) { counts[l.type] = l.count; });
+        Object.keys(retained).forEach(function (type) {
+            if (!counts.hasOwnProperty(type)) {
+                counts[type] = Math.max.apply(null, Object.values(retained[type]));
+            }
+        });
+        const leafs = [];
+        Object.keys(counts).map(Number).sort(function (a, b) { return a - b; }).forEach(function (type) {
+            const attrs = retained[type] ? Object.keys(retained[type]).map(Number) : [0];
+            attrs.forEach(function (attribute) {
+                leafs.push({type: type, attribute: attribute, count: counts[type], names: info.channels[type] || {}});
+            });
+        });
+        return {mac: mac, name: info.name, leafs: leafs};
+    }).filter(function (dev) { return dev.leafs.length > 0; });
 }

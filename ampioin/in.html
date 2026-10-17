@@ -62,7 +62,19 @@
                 const type = Number($('#node-input-devtype').val());
                 const attr = Number($('#node-input-attribute').val());
                 const leaf = l && l.find(function(x){ return x.type === type && x.attribute === attr; });
-                fill('#node-input-index', range(leaf ? leaf.count : 32), function(i){ return i + ' (channel ' + (i + 1) + ')'; }, node.index);
+                const names = leaf ? leaf.names : {};
+                fill('#node-input-index', range(leaf ? leaf.count : 32), function(i){
+                    return i + (names[i] ? ': ' + names[i] : ' (channel ' + (i + 1) + ')');
+                }, node.index);
+                FillNamePlaceholder();
+            }
+            function FillNamePlaceholder(){
+                const l = leafs();
+                const type = Number($('#node-input-devtype').val());
+                const attr = Number($('#node-input-attribute').val());
+                const leaf = l && l.find(function(x){ return x.type === type && x.attribute === attr; });
+                const desc = leaf && leaf.names[$('#node-input-index').val()];
+                $('#node-input-name').attr('placeholder', desc || 'Name');
             }
             function GetDevices(){
                 const cfgid = $('#node-input-server').val();
@@ -103,6 +115,7 @@
             $("#node-input-mac").on('change', FillTypes);
             $("#node-input-devtype").on('change', FillAttributes);
             $("#node-input-attribute").on('change', FillIndexes);
+            $("#node-input-index").on('change', FillNamePlaceholder);
         }
     });
 </script>
@@ -163,7 +176,7 @@
     </dl>
     <h3>Details</h3>
     <h4>Target device (required)</h4>
-    Click the search icon to discover devices. Devices are found from their retained states (<code>device/v1/state/leaf/#</code>), names come from <code>device_api/to/list</code>.
+    Click the search icon to discover devices. Devices, types and channel descriptions come from the server (<code>get_devices</code> over <code>rpc/v2</code>), attributes from retained states (<code>device/v1/state/leaf/#</code>).
     <h4>Type (required)</h4>
     Type of the value to read. Only types discovered on the selected device are listed.
     <h4>Attribute (required)</h4>

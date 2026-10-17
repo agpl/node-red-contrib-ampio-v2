@@ -316,9 +316,7 @@ module.exports = function(RED) {
 
         
         
-        //DEVICES DISCOVERY - retained device/v1 states, names from device_api list
-        const DEVICE_LIST_REQUEST = 'device_api/to/list';
-        const DEVICE_LIST_RESPONSE = 'device_api/from/list';
+        //DEVICES DISCOVERY - get_devices over rpc/v2 (types, names), retained device/v1 states (attributes)
         const STATE_TOPICS = 'device/v1/state/leaf/#';
         const DISCOVERY_TIME = 2000;
         RED.httpAdmin.get('/ampio-v2/'+node_id+'/devices/v1/list', RED.auth.needsPermission('ampiov2.read'),function(req,res){
@@ -328,9 +326,14 @@ module.exports = function(RED) {
                 reconnectPeriod: 0,
                 connectTimeout: DISCOVERY_TIME
             }));
+            // ampio-mqtt replies to ids above int32 range on .../2147483647, keep it below
+            const rpcId = 1 + Math.floor(Math.random() * 2147483646);
+            const rpcRequest = 'rpc/v2/request/ampio-mqtt/' + rpcId;
+            const rpcResponse = 'rpc/v2/response/ampio-mqtt/' + rpcId;
             const topics = [];
-            let names = {};
+            let rpcDevices = null;
             let finished = false;
+            let collecting = false;
             function finish(status, body){
                 if(finished){
                     return;
@@ -340,14 +343,25 @@ module.exports = function(RED) {
                 client.end(true);
                 res.status(status).json(body);
             }
+            function tryFinish(){
+                if(rpcDevices && !collecting){
+                    finish(200, au.discover_devices(rpcDevices, topics));
+                }
+            }
             client.on('message', function(topic, message){
-                if(topic === DEVICE_LIST_RESPONSE){
+                if(topic === rpcResponse){
                     try{
-                        names = au.device_names(JSON.parse(message));
+                        const data = JSON.parse(message);
+                        if(data.id !== rpcId){
+                            return;
+                        }
+                        rpcDevices = (data.result && data.result.devices) || [];
                     }
                     catch(err){
-                        node.warn("Invalid device list: " + err.message);
+                        node.warn("Invalid get_devices response: " + err.message);
+                        rpcDevices = [];
                     }
+                    tryFinish();
                 }
                 else if(message.length > 0){
                     topics.push(topic);
@@ -357,12 +371,18 @@ module.exports = function(RED) {
                 finish(502, "MQTT error: " + err.message);
             });
             client.on('connect', function(){
-                client.subscribe([DEVICE_LIST_RESPONSE, STATE_TOPICS], function(err){
+                client.subscribe([rpcResponse, STATE_TOPICS], function(err){
                     if(err){
                         finish(500, "Subscribe failed: " + err.message);
                         return;
                     }
-                    client.publish(DEVICE_LIST_REQUEST, '');
+                    // retained states arrive right after subscribe, give them a moment
+                    collecting = true;
+                    setTimeout(function(){
+                        collecting = false;
+                        tryFinish();
+                    }, 500);
+                    client.publish(rpcRequest, JSON.stringify({jsonrpc: "2.0", method: "get_devices", params: {}, id: rpcId}));
                 });
             });
             const timer = setTimeout(function(){
@@ -370,8 +390,10 @@ module.exports = function(RED) {
                     finish(504, "MQTT broker not reachable");
                     return;
                 }
-                finish(200, au.discover_devices(topics, names));
-            }, DISCOVERY_TIME);
+                // no get_devices answer, fall back to retained states only
+                node.warn("get_devices timeout, devices discovered without names");
+                finish(200, au.discover_devices([], topics));
+            }, DISCOVERY_TIME * 2);
         });
 
         RED.httpAdmin.get('/ampio-v2/'+node_id+'/types', RED.auth.needsPermission('ampiov2.read'),function(req,res){
