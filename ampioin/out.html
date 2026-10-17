@@ -19,9 +19,38 @@
         },
         oneditprepare: function(){
             const node = this;
-            let TypeNames = {};
+            const ACCESS = 'W'; // 'R' for IN, 'W' for OUT
+            let Defs = {};
             let Devices = {};
+            let Order = [];
 
+            // attributes of a type usable in this direction, from Designer definitions
+            function defAttrs(type){
+                const def = Defs[type];
+                if(!def){
+                    return [];
+                }
+                return Object.keys(def.attributes).map(Number).filter(function(a){
+                    return def.attributes[a].rw.indexOf(ACCESS) !== -1;
+                });
+            }
+            function attrDef(type, attr){
+                return Defs[type] && Defs[type].attributes[attr];
+            }
+            function unique(list){
+                return list.filter(function(x, i, a){ return a.indexOf(x) === i; });
+            }
+            function leafs(){
+                const dev = Devices[$('#node-input-mac').val()];
+                return dev ? dev.leafs : null;
+            }
+            function leafOf(type){
+                const l = leafs();
+                return l && l.find(function(x){ return x.type === type; });
+            }
+            function range(n){
+                return Array.from({length: n}, function(_, i){ return i; });
+            }
             // fill select with values; saved value is kept selectable only when the device was not discovered
             function fill(id, values, label, saved){
                 const sel = $(id).empty();
@@ -36,58 +65,76 @@
                     sel.val(saved);
                 }
             }
-            function leafs(){
-                const dev = Devices[$('#node-input-mac').val()];
-                return dev ? dev.leafs : null;
-            }
-            function range(n){
-                return Array.from({length: n}, function(_, i){ return i; });
-            }
             function FillTypes(){
                 const l = leafs();
-                const types = l ? l.map(function(x){ return x.type; }).filter(function(t, i, a){ return a.indexOf(t) === i; })
-                                : Object.keys(TypeNames).map(Number);
-                fill('#node-input-devtype', types, function(t){ return t + ' - ' + (TypeNames[t] || 'UNKNOWN'); }, node.devtype);
+                let types = l ? unique(l.map(function(x){ return x.type; })) : Object.keys(Defs).map(Number);
+                // hide types which have nothing to read (IN) or write (OUT)
+                types = types.filter(function(t){ return !Defs[t] || defAttrs(t).length; });
+                fill('#node-input-devtype', types, function(t){
+                    return t + ' - ' + (Defs[t] ? Defs[t].label : 'Unknown');
+                }, node.devtype);
                 FillAttributes();
             }
             function FillAttributes(){
-                const l = leafs();
                 const type = Number($('#node-input-devtype').val());
-                const attrs = l ? l.filter(function(x){ return x.type === type; }).map(function(x){ return x.attribute; }) : [0];
-                fill('#node-input-attribute', attrs, String, node.attribute);
+                const l = leafs();
+                const seen = l ? l.filter(function(x){ return x.type === type; }).map(function(x){ return x.attribute; }) : [];
+                let attrs = unique(defAttrs(type).concat(Defs[type] ? [] : seen));
+                if(!attrs.length){
+                    attrs = [0];
+                }
+                attrs.sort(function(a, b){ return a - b; });
+                fill('#node-input-attribute', attrs, function(a){
+                    const d = attrDef(type, a);
+                    return a + (d && d.label ? ' - ' + d.label : '') + (d && d.rw ? ' [' + d.rw + ']' : '');
+                }, node.attribute);
                 FillIndexes();
             }
             function FillIndexes(){
-                const l = leafs();
                 const type = Number($('#node-input-devtype').val());
-                const attr = Number($('#node-input-attribute').val());
-                const leaf = l && l.find(function(x){ return x.type === type && x.attribute === attr; });
+                const leaf = leafOf(type);
                 const names = leaf ? leaf.names : {};
                 fill('#node-input-index', range(leaf ? leaf.count : 32), function(i){
                     return i + (names[i] ? ': ' + names[i] : ' (channel ' + (i + 1) + ')');
                 }, node.index);
-                FillNamePlaceholder();
+                FillHints();
             }
-            function FillNamePlaceholder(){
-                const l = leafs();
+            function FillHints(){
                 const type = Number($('#node-input-devtype').val());
-                const attr = Number($('#node-input-attribute').val());
-                const leaf = l && l.find(function(x){ return x.type === type && x.attribute === attr; });
+                const d = attrDef(type, Number($('#node-input-attribute').val()));
+                const leaf = leafOf(type);
                 const desc = leaf && leaf.names[$('#node-input-index').val()];
                 $('#node-input-name').attr('placeholder', desc || 'Name');
+                let hint = '';
+                if(d){
+                    if(d.enum){
+                        hint = Object.keys(d.enum).map(function(k){ return k + ' = ' + d.enum[k]; }).join(', ');
+                    } else if(d.fields){
+                        hint = 'object {' + d.fields.join(', ') + '}';
+                    } else if(d.kind === 'binary'){
+                        hint = '0 / 1 (true / false)';
+                    } else if(d.min !== undefined){
+                        hint = d.min + ' .. ' + d.max + (d.unit ? ' ' + d.unit : '');
+                    } else {
+                        hint = d.kind;
+                    }
+                }
+                $('#ampio-value-hint').text(hint ? 'Value: ' + hint : '').toggle(!!hint);
             }
             function GetDevices(){
                 const cfgid = $('#node-input-server').val();
                 const sel = $('#node-input-mac').empty();
                 $('<option>').val('').text('Searching...').appendTo(sel);
-                $.getJSON('ampio-v2/'+cfgid+'/types', function(json){
-                    TypeNames = json;
+                $.getJSON('ampio-v2/'+cfgid+'/leafdefs', function(json){
+                    Defs = json;
                 }).always(function(){
                     $.getJSON('ampio-v2/'+cfgid+'/devices/v1/list')
                     .done(function(data){
                         Devices = {};
+                        Order = [];
                         data.forEach(function(dev){
                             Devices[dev.mac] = dev;
+                            Order.push(dev.mac);
                         });
                     })
                     .fail(function(xhr){
@@ -98,7 +145,8 @@
                         if(node.mac && !Devices.hasOwnProperty(node.mac)){
                             $('<option>').val(node.mac).text(node.mac + ' (not found)').appendTo(sel);
                         }
-                        Object.keys(Devices).forEach(function(mac){
+                        // Order keeps server order, object keys would put numeric-looking MACs first
+                        Order.forEach(function(mac){
                             const dev = Devices[mac];
                             $('<option>').val(mac).text(mac + (dev.name ? ' (' + dev.name + ')' : '')).appendTo(sel);
                         });
@@ -114,8 +162,8 @@
             $("#node-input-lookup-devices").on("click", GetDevices);
             $("#node-input-mac").on('change', FillTypes);
             $("#node-input-devtype").on('change', FillAttributes);
-            $("#node-input-attribute").on('change', FillIndexes);
-            $("#node-input-index").on('change', FillNamePlaceholder);
+            $("#node-input-attribute").on('change', FillHints);
+            $("#node-input-index").on('change', FillHints);
         }
     });
 </script>
@@ -144,6 +192,7 @@
         <label for="node-input-attribute"><i class="icon-tag"></i> Attribute</label>
         <select id="node-input-attribute" style="width: 70%;"></select>
     </div>
+    <div class="form-tips" id="ampio-value-hint" style="display: none;"></div>
     <div class="form-row">
         <label for="node-input-index"><i class="icon-tag"></i> Index</label>
         <select id="node-input-index" style="width: 70%;"></select>
@@ -160,7 +209,9 @@
     <h3>Inputs</h3>
     <dl class="message-properties">
         <dt>payload <span class="property-type">any</span></dt>
-        <dd>value to set. It is sent as the <code>v</code> field of the JSON message. For RGBW or CCT send an object, ex. <code>{"h":120,"s":100,"v":50}</code> or <code>{"ct":2700,"v":80}</code>.</dd>
+        <dd>value to set. It is sent as the <code>v</code> field of the JSON message, <code>true</code>/<code>false</code> are sent as <code>1</code>/<code>0</code>. For RGBW or CCT send an object, ex. <code>{"h":120,"s":100,"v":50}</code> or <code>{"ct":2700,"v":80}</code>.</dd>
+        <dt class="optional">time <span class="property-type">number</span></dt>
+        <dd>optional time sent along with the value (<code>{"v": ..., "time": ...}</code>), as Ampio Designer does.</dd>
         <dt class="optional">mac <span class="property-type">string</span></dt>
         <dd>overrides MAC address of the device selected in node configuration.</dd>
         <dt class="optional">devtype <span class="property-type">number</span></dt>
@@ -174,9 +225,9 @@
     <h4>Target device (required)</h4>
     Click the search icon to discover devices. Devices, types and channel descriptions come from the server (<code>get_devices</code> over <code>rpc/v2</code>), attributes from retained states (<code>device/v1/state/leaf/#</code>).
     <h4>Type (required)</h4>
-    Type of the value to control. Only types discovered on the selected device are listed.
+    Type of the value to control. Only types discovered on the selected device are listed. Types with nothing to write are hidden.
     <h4>Attribute (required)</h4>
-    Usually <code>0</code>. Some types (ex. blinds) expose more attributes.
+    All writable attributes of the type are listed (<code>[W]</code> write only, <code>[RW]</code> read/write), ex. blind position, slat position, motor command. Expected value (range, enum values or object fields) is shown below the field.
     <h4>Index (required)</h4>
     Channel number counted from <code>0</code> (ex. relay 1 is index <code>0</code>).
 </script>

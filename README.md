@@ -18,11 +18,24 @@ Basically, after installing you will have 4 add-ons:
 - Ampio v2 LCD, a complete tool to display text and shapes on LCD screen on MDOT touch panels.
 - Ampio v2 Events, to send and/or receive events from your CAN Network.
 
+## Leaf definitions
+`ampioin/db/leafdefs.json` lists every leaf type with its attributes (read/write access, value kind, range, unit, enum values, labels). It is generated from the Ampio Designer bundle served by the server:
+
+```
+curl -o /tmp/App.js http://<server>/assets/App-<hash>.js   # name of the main script from Designer page source
+node tools/extract-designer-defs.js /tmp/App.js > ampioin/db/leafdefs.json
+```
+
+The script only evaluates plain object literals cut from the bundle, in an empty sandbox.
+
+## Tests
+`npm test` runs the IN/OUT/config nodes against an in-process MQTT broker.
+
 ## Changelog
 Disclaimer: every version lower than 1.0.0 is considered as beta. I do all my best to make every release as stable as possible, but due to fast development of protocol, API changes may occur. 1.0.0 is planned after transition to /b/ MQTT broadcasts, which requires many changes.
 
 ### 0.7.x
-0.7.0 - Package renamed to `node-red-contrib-ampio-v2` with own node type names, so it does not collide with v1. **Breaking:** Ampio IN/OUT moved to the new MQTT API. State is read from `device/v1/state/leaf/<MAC>/<type>/<attribute>/<index>` and commands are sent to `device/v1/set/leaf/<MAC>/<type>/<attribute>/<index>`, with JSON payload `{"v": value}` (value can be an object, ex. RGBW `{h,s,v}`). Devices, types, channel counts, device names and channel descriptions are discovered with `get_devices` over `rpc/v2/request/ampio-mqtt/<id>` (same source as Ampio Designer); attributes come from retained states. Raw CAN commands, I/O descriptions and old value types were removed. **Existing IN/OUT nodes must be reconfigured (device, type, attribute, index).**<br>
+0.7.0 - Package renamed to `node-red-contrib-ampio-v2` with own node type names, so it does not collide with v1. **Breaking:** Ampio IN/OUT moved to the new MQTT API. State is read from `device/v1/state/leaf/<MAC>/<type>/<attribute>/<index>` and commands are sent to `device/v1/set/leaf/<MAC>/<type>/<attribute>/<index>`, with JSON payload `{"v": value}` (value can be an object, ex. RGBW `{h,s,v}`). Devices, types, channel counts, device names and channel descriptions are discovered with `get_devices` over `rpc/v2/request/ampio-mqtt/<id>` (same source as Ampio Designer); attributes come from retained states. IN/OUT editors list all readable/writable attributes of every type (generated from Ampio Designer definitions) with the expected value. OUT sends `true`/`false` as `1`/`0` and passes optional `msg.time`. Raw CAN commands, I/O descriptions and old value types were removed. **Existing IN/OUT nodes must be reconfigured (device, type, attribute, index).**<br>
 
 ### 0.6.x
 0.6.8 - support for CO2 in M-SENS<br>

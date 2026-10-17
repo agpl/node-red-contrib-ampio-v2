@@ -85,8 +85,13 @@ exports.build_topic = function (action, mac, type, attribute, index) {
 }
 
 // Payloads are JSON objects carrying the value in "v", ex. {"v": 1} or {"v": {"h": 0, "s": 0, "v": 0}}
-exports.encode_value = function (value) {
-    return JSON.stringify({v: value});
+// booleans are sent as 1/0, optional time is passed as "time" (same as Ampio Designer)
+exports.encode_value = function (value, time) {
+    const data = {v: typeof value === 'boolean' ? (value ? 1 : 0) : value};
+    if (time !== undefined) {
+        data.time = time;
+    }
+    return JSON.stringify(data);
 }
 
 exports.decode_value = function (payload) {
@@ -174,10 +179,10 @@ exports.parse_descriptions = function (b64) {
     return result;
 }
 
-// get_devices device -> {mac, name, leafs: [{type, count}], channels: {type: {index: name}}}
+// get_devices device -> {mac (macUser, as used in topics), name, leafs: [{type, count}], channels: {type: {index: name}}}
 exports.device_info = function (dev) {
     const info = {
-        mac: dev.macProd.toString(16),
+        mac: (dev.macUser || dev.macProd).toString(16),
         name: dev.name ? Buffer.from(dev.name, 'base64').toString('utf-8') : '',
         leafs: exports.parse_config_table(dev.deviceConfigTable),
         channels: {}

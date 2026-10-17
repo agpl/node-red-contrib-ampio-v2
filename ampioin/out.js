@@ -29,7 +29,7 @@ module.exports = function(RED) {
 
             node.brokerConn.publish({
                 topic: au.build_topic('set', mac, devtype, attribute, index),
-                payload: au.encode_value(msg.payload)
+                payload: au.encode_value(msg.payload, msg.time)
             }, function(err) {
                 done(err);
             });

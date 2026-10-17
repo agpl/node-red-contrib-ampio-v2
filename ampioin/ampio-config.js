@@ -396,8 +396,9 @@ module.exports = function(RED) {
             }, DISCOVERY_TIME * 2);
         });
 
-        RED.httpAdmin.get('/ampio-v2/'+node_id+'/types', RED.auth.needsPermission('ampiov2.read'),function(req,res){
-            res.json(require('./db/types.json'));
+        // leaf types and attributes, generated from Ampio Designer by tools/extract-designer-defs.js
+        RED.httpAdmin.get('/ampio-v2/'+node_id+'/leafdefs', RED.auth.needsPermission('ampiov2.read'),function(req,res){
+            res.json(require('./db/leafdefs.json'));
         });
 
         RED.httpAdmin.get('/ampio-v2/'+node_id+'/devices/types', RED.auth.needsPermission('ampiov2.read'),function(req,res){

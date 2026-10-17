@@ -1,0 +1,801 @@
+{
+  "3": {
+    "name": "BIN_FLAG_OLD",
+    "label": "Bin flag old",
+    "attributes": {
+      "0": {
+        "label": "",
+        "rw": "R",
+        "kind": "binary"
+      }
+    }
+  },
+  "128": {
+    "name": "BIN_IN",
+    "label": "Input",
+    "attributes": {
+      "0": {
+        "label": "",
+        "rw": "R",
+        "kind": "binary"
+      }
+    }
+  },
+  "129": {
+    "name": "RELAY",
+    "label": "Relay",
+    "attributes": {
+      "0": {
+        "label": "",
+        "rw": "RW",
+        "kind": "binary"
+      }
+    }
+  },
+  "130": {
+    "name": "TEMPERATURE",
+    "label": "Temperature",
+    "attributes": {
+      "0": {
+        "label": "",
+        "rw": "R",
+        "kind": "linearI16",
+        "min": -327.67,
+        "max": 327.67,
+        "unit": "℃",
+        "precision": 2
+      }
+    }
+  },
+  "131": {
+    "name": "OC",
+    "label": "OC",
+    "attributes": {
+      "0": {
+        "label": "",
+        "rw": "RW",
+        "kind": "linearU8",
+        "min": 0,
+        "max": 254
+      }
+    }
+  },
+  "132": {
+    "name": "MLED",
+    "label": "M-LED",
+    "attributes": {
+      "0": {
+        "label": "",
+        "rw": "RW",
+        "kind": "linearU8",
+        "min": 0,
+        "max": 254
+      }
+    }
+  },
+  "133": {
+    "name": "MDIM_AC",
+    "label": "AC dimmer",
+    "attributes": {
+      "0": {
+        "label": "",
+        "rw": "RW",
+        "kind": "linearU8",
+        "min": 0,
+        "max": 254
+      }
+    }
+  },
+  "134": {
+    "name": "RGBW",
+    "label": "RGBW",
+    "attributes": {
+      "0": {
+        "label": "Colour",
+        "rw": "RW",
+        "kind": "hsv",
+        "fields": [
+          "h",
+          "s",
+          "v"
+        ]
+      },
+      "1": {
+        "label": "Brightness",
+        "rw": "RW",
+        "kind": "linearU8",
+        "min": 0,
+        "max": 254
+      }
+    }
+  },
+  "135": {
+    "name": "CCT",
+    "label": "CCT",
+    "attributes": {
+      "0": {
+        "label": "Colour Temp & Brightness",
+        "rw": "RW",
+        "kind": "cct"
+      },
+      "1": {
+        "label": "Brightness",
+        "rw": "W",
+        "kind": "linearU8",
+        "min": 0,
+        "max": 254
+      }
+    }
+  },
+  "136": {
+    "name": "BLIND",
+    "label": "Blind",
+    "attributes": {
+      "0": {
+        "label": "Position",
+        "rw": "RW",
+        "kind": "linearU8",
+        "min": 0,
+        "max": 100
+      },
+      "1": {
+        "label": "Slat / unsealing position",
+        "rw": "RW",
+        "kind": "linearU8",
+        "min": 0,
+        "max": 100
+      },
+      "2": {
+        "label": "Motor",
+        "rw": "RW",
+        "kind": "enum",
+        "enum": {
+          "0": "Stop",
+          "1": "Close",
+          "2": "Open"
+        }
+      },
+      "256": {
+        "label": "Blind (combined)",
+        "rw": "RW",
+        "kind": "blind"
+      }
+    }
+  },
+  "137": {
+    "name": "BUTTON_AMPIO",
+    "label": "Ampio button",
+    "attributes": {
+      "0": {
+        "label": "Touch field",
+        "rw": "R",
+        "kind": "binary"
+      },
+      "1": {
+        "label": "LED Status",
+        "rw": "W",
+        "kind": "binary"
+      },
+      "2": {
+        "label": "LED Status Color",
+        "rw": "W",
+        "kind": "rgb"
+      },
+      "3": {
+        "label": "LED status brightness",
+        "rw": "W",
+        "kind": "linearU8",
+        "min": 0,
+        "max": 254
+      },
+      "4": {
+        "label": "Backlight Color",
+        "rw": "W",
+        "kind": "rgbw"
+      },
+      "5": {
+        "label": "Backlight brightness",
+        "rw": "W",
+        "kind": "linearU8",
+        "min": 0,
+        "max": 254
+      }
+    }
+  },
+  "139": {
+    "name": "BIN_FLAG",
+    "label": "Binary Flag",
+    "attributes": {
+      "0": {
+        "label": "",
+        "rw": "RW",
+        "kind": "binary"
+      }
+    }
+  },
+  "142": {
+    "name": "HVAC_TYPE2",
+    "label": "HVAC",
+    "attributes": {
+      "0": {
+        "label": "Online",
+        "rw": "R",
+        "kind": "binary"
+      },
+      "1": {
+        "label": "On/Off",
+        "rw": "RW",
+        "kind": "binary"
+      },
+      "2": {
+        "label": "Temperature setpoint",
+        "rw": "RW",
+        "kind": "linearU8",
+        "min": 10,
+        "max": 30,
+        "unit": "℃"
+      },
+      "3": {
+        "label": "Mode",
+        "rw": "RW",
+        "kind": "enum",
+        "enum": {
+          "1": "Auto",
+          "2": "Cool",
+          "3": "Heat",
+          "4": "Dry",
+          "5": "Fan"
+        }
+      },
+      "4": {
+        "label": "Current temperature",
+        "rw": "R",
+        "kind": "linearU8"
+      },
+      "5": {
+        "label": "Fan speed",
+        "rw": "RW",
+        "kind": "enum",
+        "enum": {
+          "1": "Auto",
+          "2": "Very low",
+          "3": "Low",
+          "4": "Medium",
+          "5": "High",
+          "6": "Highest"
+        }
+      },
+      "256": {
+        "label": "HVAC (combined)",
+        "rw": "RW",
+        "kind": "hvac"
+      }
+    }
+  },
+  "143": {
+    "name": "EVENTS",
+    "label": "Events",
+    "attributes": {
+      "0": {
+        "label": "",
+        "rw": "RW",
+        "kind": "enum",
+        "enum": {
+          "1": "Send"
+        }
+      }
+    }
+  },
+  "145": {
+    "name": "LIGHT_SENSOR_LUX",
+    "label": "Light sensor (lux)",
+    "attributes": {
+      "0": {
+        "label": "",
+        "rw": "R",
+        "kind": "linearI16",
+        "min": 0,
+        "max": 65535,
+        "unit": "lux",
+        "precision": 0
+      }
+    }
+  },
+  "146": {
+    "name": "CARD_READER",
+    "label": "Card reader",
+    "attributes": {
+      "0": {
+        "label": "Detect card",
+        "rw": "R",
+        "kind": "binary"
+      },
+      "1": {
+        "label": "Card status",
+        "rw": "R",
+        "kind": "enum",
+        "enum": {
+          "0": "No card",
+          "1": "On list",
+          "2": "Not on list"
+        }
+      },
+      "2": {
+        "label": "Card type",
+        "rw": "R",
+        "kind": "enum",
+        "enum": {
+          "0": "No type",
+          "1": "User card",
+          "2": "Service card"
+        }
+      }
+    }
+  },
+  "147": {
+    "name": "BUZZER",
+    "label": "Buzzer",
+    "attributes": {
+      "0": {
+        "label": "",
+        "rw": "W",
+        "kind": "buzzer",
+        "min": 1,
+        "max": 31
+      }
+    }
+  },
+  "149": {
+    "name": "U8_FLAG",
+    "label": "U8 Flag",
+    "attributes": {
+      "0": {
+        "label": "",
+        "rw": "RW",
+        "kind": "linearU8",
+        "min": 0,
+        "max": 254
+      }
+    }
+  },
+  "150": {
+    "name": "LCD",
+    "label": "LCD",
+    "attributes": {
+      "0": {
+        "label": "LCD backlight brightness",
+        "rw": "W",
+        "kind": "linearU8",
+        "min": 0,
+        "max": 254
+      },
+      "1": {
+        "label": "LCD pressed",
+        "rw": "R",
+        "kind": "binary"
+      }
+    }
+  },
+  "152": {
+    "name": "GROUPS_SET",
+    "label": "Groups set",
+    "attributes": {
+      "0": {
+        "label": "Binary",
+        "rw": "RW",
+        "kind": "binary"
+      },
+      "1": {
+        "label": "Linear",
+        "rw": "RW",
+        "kind": "linearU8",
+        "min": 0,
+        "max": 254
+      },
+      "16": {
+        "label": "Roller position",
+        "rw": "RW",
+        "kind": "linearU8",
+        "min": 0,
+        "max": 100
+      },
+      "17": {
+        "label": "Slat / unsealing position",
+        "rw": "W",
+        "kind": "linearI16",
+        "min": 0,
+        "max": 100
+      },
+      "18": {
+        "label": "Roller motor",
+        "rw": "W",
+        "kind": "enum",
+        "enum": {
+          "0": "Stop",
+          "1": "Close",
+          "2": "Open"
+        }
+      },
+      "24": {
+        "label": "Color",
+        "rw": "W",
+        "kind": "rgb"
+      },
+      "25": {
+        "label": "Brightness",
+        "rw": "W",
+        "kind": "linearU8"
+      },
+      "32": {
+        "label": "Color",
+        "rw": "W",
+        "kind": "rgbw"
+      },
+      "33": {
+        "label": "Brightness",
+        "rw": "W",
+        "kind": "linearU8"
+      },
+      "40": {
+        "label": "CCT",
+        "rw": "W",
+        "kind": "generic"
+      },
+      "41": {
+        "label": "Brightness",
+        "rw": "W",
+        "kind": "linearU8"
+      }
+    }
+  },
+  "155": {
+    "name": "CLIMATE",
+    "label": "Climate",
+    "attributes": {
+      "0": {
+        "label": "On/Off",
+        "rw": "RW",
+        "kind": "binary"
+      },
+      "1": {
+        "label": "Setpoint",
+        "rw": "RW",
+        "kind": "linearI16",
+        "min": 5,
+        "max": 30,
+        "unit": "℃",
+        "precision": 2
+      },
+      "2": {
+        "label": "Climate system mode",
+        "rw": "RW",
+        "kind": "enum",
+        "enum": {
+          "0": "Heat",
+          "1": "Cool"
+        }
+      },
+      "3": {
+        "label": "Climate schedule mode",
+        "rw": "RW",
+        "kind": "enum",
+        "enum": {
+          "0": "Schedule",
+          "1": "Manual"
+        }
+      },
+      "4": {
+        "label": "Sources in current mode",
+        "rw": "RW",
+        "kind": "linearU8",
+        "min": 0,
+        "max": 7
+      },
+      "10": {
+        "label": "Climate state",
+        "rw": "R",
+        "kind": "climateState",
+        "fields": [
+          "currentTemp",
+          "isDemandActive",
+          "isWindowOpen",
+          "presenceDetected"
+        ]
+      },
+      "11": {
+        "label": "Climate source 1",
+        "rw": "R",
+        "kind": "climateSource",
+        "fields": [
+          "onOff",
+          "mode",
+          "outputValue",
+          "fanSpeed"
+        ]
+      },
+      "12": {
+        "label": "Climate source 2",
+        "rw": "R",
+        "kind": "climateSource",
+        "fields": [
+          "onOff",
+          "mode",
+          "outputValue",
+          "fanSpeed"
+        ]
+      },
+      "13": {
+        "label": "Climate source 3",
+        "rw": "R",
+        "kind": "climateSource",
+        "fields": [
+          "onOff",
+          "mode",
+          "outputValue",
+          "fanSpeed"
+        ]
+      },
+      "256": {
+        "label": "Climate (combined)",
+        "rw": "RW",
+        "kind": "climate"
+      }
+    }
+  },
+  "156": {
+    "name": "LCD",
+    "label": "LCD",
+    "attributes": {
+      "0": {
+        "label": "LCD backlight brightness",
+        "rw": "W",
+        "kind": "linearU8",
+        "min": 0,
+        "max": 254
+      },
+      "1": {
+        "label": "Screen num",
+        "rw": "RW",
+        "kind": "linearU8",
+        "min": 0,
+        "max": 11
+      }
+    }
+  },
+  "157": {
+    "name": "RTC",
+    "label": "Clock",
+    "attributes": {
+      "0": {
+        "label": "",
+        "rw": "R",
+        "kind": "rtc",
+        "fields": [
+          "wday",
+          "hour",
+          "min",
+          "is_night"
+        ]
+      }
+    }
+  },
+  "161": {
+    "name": "SATEL_OUT",
+    "label": "Satel output",
+    "attributes": {
+      "0": {
+        "label": "",
+        "rw": "RW",
+        "kind": "binary"
+      }
+    }
+  },
+  "162": {
+    "name": "ALARM_ZONE",
+    "label": "Alarm zone",
+    "attributes": {
+      "0": {
+        "label": "Zone armed",
+        "rw": "R",
+        "kind": "binary"
+      },
+      "1": {
+        "label": "Zone command",
+        "rw": "W",
+        "kind": "enum",
+        "enum": {
+          "0": "Arm mode0",
+          "1": "Arm mode1",
+          "2": "Arm mode2",
+          "3": "Arm mode3",
+          "4": "Disarm",
+          "5": "Force arm mode0",
+          "6": "Force arm mode1",
+          "7": "Force arm mode2",
+          "8": "Force arm mode3"
+        }
+      },
+      "2": {
+        "label": "Zone alarm",
+        "rw": "R",
+        "kind": "binary"
+      },
+      "3": {
+        "label": "Zone entry time",
+        "rw": "R",
+        "kind": "binary"
+      },
+      "4": {
+        "label": "Zone exit over 10s",
+        "rw": "R",
+        "kind": "binary"
+      },
+      "5": {
+        "label": "Zone exit below 10s",
+        "rw": "R",
+        "kind": "binary"
+      }
+    }
+  },
+  "163": {
+    "name": "PIN",
+    "label": "PIN",
+    "attributes": {
+      "0": {
+        "label": "",
+        "rw": "W",
+        "kind": "enum",
+        "enum": {
+          "0": "0",
+          "1": "1",
+          "2": "2",
+          "3": "3",
+          "4": "4",
+          "5": "5",
+          "6": "6",
+          "7": "7",
+          "8": "8",
+          "9": "9",
+          "10": "Pin clear"
+        }
+      }
+    }
+  },
+  "165": {
+    "name": "UART_ARYLIC",
+    "label": "Arylic",
+    "attributes": {
+      "0": {
+        "label": "Source",
+        "rw": "RW",
+        "kind": "enum",
+        "enum": {
+          "0": "Unknown",
+          "1": "NET",
+          "2": "BT",
+          "3": "USBDAC",
+          "4": "LINE-IN",
+          "5": "OPT",
+          "6": "COAX",
+          "7": "LINE-IN2",
+          "8": "OPT2",
+          "9": "COAX2",
+          "10": "HDMI"
+        }
+      },
+      "1": {
+        "label": "Volume",
+        "rw": "RW",
+        "kind": "linearU8",
+        "min": 0,
+        "max": 100
+      },
+      "2": {
+        "label": "Mute",
+        "rw": "RW",
+        "kind": "binary"
+      },
+      "3": {
+        "label": "Preset",
+        "rw": "W",
+        "kind": "linearU8",
+        "min": 1,
+        "max": 10
+      },
+      "4": {
+        "label": "Playback",
+        "rw": "W",
+        "kind": "enum",
+        "enum": {
+          "1": "Play or pause",
+          "2": "Stop",
+          "3": "Play next",
+          "4": "Play prev"
+        }
+      },
+      "5": {
+        "label": "Vendor",
+        "rw": "R",
+        "kind": "enum",
+        "enum": {
+          "0": "Unknown",
+          "1": "SPOTIFY",
+          "2": "QPLAY",
+          "3": "DLNA",
+          "4": "AIRPLAY",
+          "5": "UPNP",
+          "6": "PHONE",
+          "7": "USB",
+          "8": "TIDAL",
+          "9": "NAPSTER",
+          "10": "QOBUZ",
+          "11": "AMAZON",
+          "12": "TUNEIN",
+          "13": "IHEART",
+          "14": "VTUNER",
+          "15": "HTTP",
+          "16": "OTHER"
+        }
+      },
+      "6": {
+        "label": "Title",
+        "rw": "R",
+        "kind": "text"
+      }
+    }
+  },
+  "166": {
+    "name": "BIN_GENERIC",
+    "label": "Bin generic",
+    "attributes": {
+      "0": {
+        "label": "",
+        "rw": "RW",
+        "kind": "binary"
+      }
+    }
+  },
+  "167": {
+    "name": "I32_GENERIC",
+    "label": "I32 generic",
+    "attributes": {
+      "0": {
+        "label": "",
+        "rw": "RW",
+        "kind": "linearI16",
+        "min": -2147483648,
+        "max": 2147483647,
+        "precision": 0
+      }
+    }
+  },
+  "168": {
+    "name": "CO2_PPM",
+    "label": "Co2 ppm",
+    "attributes": {
+      "0": {
+        "label": "",
+        "rw": "R",
+        "kind": "linearI16",
+        "min": 0,
+        "max": 2000,
+        "unit": "ppm",
+        "precision": 0
+      }
+    }
+  },
+  "169": {
+    "name": "I16_GENERIC",
+    "label": "I16 generic",
+    "attributes": {
+      "0": {
+        "label": "",
+        "rw": "RW",
+        "kind": "linearI16",
+        "min": -32768,
+        "max": 32767,
+        "precision": 0
+      }
+    }
+  }
+}
