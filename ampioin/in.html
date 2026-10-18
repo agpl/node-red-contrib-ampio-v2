@@ -172,16 +172,35 @@
                 }, node.index, keep);
                 FillHints();
             }
+            // topic this node will use, same rules as generic/ampio-utils.js
+            function topicFor(s, mac, attr, index){
+                if(!mac || s.type === '' || (!s.legacy && isNaN(s.type))){
+                    return '';
+                }
+                if(s.legacy && s.type === 'raw'){
+                    return 'ampio/to/' + mac.toLowerCase() + '/raw';
+                }
+                if(s.legacy){
+                    const set = LegacyDefs[s.type] && LegacyDefs[s.type].set || s.type;
+                    return ACCESS === 'R'
+                        ? 'ampio/from/' + mac.toUpperCase() + '/state/' + s.type + '/' + index
+                        : 'ampio/to/' + mac.toUpperCase() + '/' + set + '/' + index + '/cmd';
+                }
+                return 'device/v1/' + (ACCESS === 'R' ? 'state' : 'set') + '/leaf/' + mac + '/' + s.type + '/' + attr + '/' + index;
+            }
             function FillHints(){
                 const s = selected();
+                const mac = $('#node-input-mac').val();
+                const attr = Number($('#node-input-attribute').val()) || 0;
                 const index = $('#node-input-index').val();
+                const raw = s.legacy && s.type === 'raw';
                 let desc, hint = '';
                 if(s.legacy){
                     const lt = legacyOf(s.type) || legacyOf(LegacyDefs[s.type] && LegacyDefs[s.type].with);
                     desc = lt && lt.names[index];
                     hint = LegacyDefs[s.type] && LegacyDefs[s.type].hint || '';
                 } else {
-                    const d = attrDef(s.type, Number($('#node-input-attribute').val()));
+                    const d = attrDef(s.type, attr);
                     const leaf = leafOf(s.type);
                     desc = leaf && leaf.names[index];
                     if(d){
@@ -199,8 +218,28 @@
                     }
                 }
                 $('#node-input-name').attr('placeholder', desc || 'Name');
-                $('#ampio-value-hint').text(hint ? 'Value: ' + hint : '').toggle(!!hint);
-                $('#ampio-legacy-hint').toggle(s.legacy);
+                const info = $('#ampio-info').empty();
+                function line(label, text, code){
+                    const row = $('<div>').appendTo(info);
+                    $('<b>').text(label + ': ').appendTo(row);
+                    (code ? $('<code>') : $('<span>')).text(text).appendTo(row);
+                }
+                if(hint){
+                    line(ACCESS === 'R' ? 'Value' : 'Send', hint);
+                }
+                if(!raw){
+                    line('Index', s.legacy ? 'counted from 1 (legacy API)' : 'counted from 0, channel 1 = index 0');
+                }
+                const topic = topicFor(s, mac, attr, index);
+                if(topic){
+                    line('Topic', topic, true);
+                }
+                if(s.legacy){
+                    line('Legacy API', raw
+                        ? 'payload is sent as hex bytes, ex. "0901"; frames are described in Ampio CAN documentation'
+                        : (ACCESS === 'R' ? 'older CAN devices, plain text values; numeric ones are output as numbers' : 'older CAN devices, the payload is sent as plain text'));
+                }
+                info.toggle(info.children().length > 0);
             }
             function GetDevices(){
                 const cfgid = $('#node-input-server').val();
@@ -269,6 +308,10 @@
             </a>
         </div>
     </div>
+    <div class="form-tips" style="margin-bottom: 12px;">
+        Click <i class="fa fa-search"></i> to load devices from the server. A new or changed server config has to be <b>deployed</b> first.
+        Devices marked <i>legacy</i> are older CAN modules available only through the legacy API.
+    </div>
     <div class="form-row">
         <label for="ampio-type"><i class="icon-tag"></i> Type</label>
         <select id="ampio-type" style="width: 70%;"></select>
@@ -279,53 +322,74 @@
         <label for="node-input-attribute"><i class="icon-tag"></i> Attribute</label>
         <select id="node-input-attribute" style="width: 70%;"></select>
     </div>
-    <div class="form-tips" id="ampio-value-hint" style="display: none;"></div>
-    <div class="form-tips" id="ampio-legacy-hint" style="display: none;"><b>Legacy API:</b> uses <code>ampio/from|to/&lt;MAC&gt;/...</code> topics with plain values, for older CAN devices.</div>
     <div class="form-row" id="ampio-index-row">
         <label for="node-input-index"><i class="icon-tag"></i> Index</label>
         <select id="node-input-index" style="width: 70%;"></select>
     </div>
+    <div class="form-tips" id="ampio-info" style="display: none; margin-bottom: 12px;"></div>
     <div class="form-row">
         <label for="node-input-name"><i class="icon-tag"></i> Name</label>
         <input type="text" id="node-input-name" placeholder="Name">
     </div>
     <div class="form-row">
         <label for="node-input-retainignore"><i class="icon-tag"></i> Ignore Retain Flag</label>
-        <input type="checkbox" id="node-input-retainignore">
+        <input type="checkbox" id="node-input-retainignore" style="display: inline-block; width: auto; vertical-align: top;">
+    </div>
+    <div class="form-tips">
+        The server keeps the last state of every channel. On deploy or reconnect it is sent again (retained message); check this box to pass on only real changes.
     </div>
 </script>
 
 <script type="text/x-red" data-help-name="Ampio v2 IN">
-    <p>Ampio block used to receive state changes from devices.</p>
-    <p>Subscribes to <code>device/v1/state/leaf/&lt;MAC&gt;/&lt;type&gt;/&lt;attribute&gt;/&lt;index&gt;</code>.</p>
+    <p>Receives state changes of an Ampio device channel: inputs, outputs, flags, temperatures, sensors, blinds, dimmers, colours and more.</p>
+
     <h3>Outputs</h3>
     <dl class="message-properties">
-        <dt>payload <span class="property-type">any</span></dt>
-        <dd>value of the <code>v</code> field from the JSON state message (ex. <code>{"v": 1}</code> gives <code>1</code>). For RGBW, CCT or RTC it is an object, ex. <code>{"h":0,"s":0,"v":0}</code>.</dd>
+        <dt>payload <span class="property-type">number | string | object</span></dt>
+        <dd>current value. Binary channels give <code>0</code>/<code>1</code>, analog channels a number,
+            colour and clock channels an object (ex. RGBW <code>{"h":120,"s":100,"v":50}</code>, CCT <code>{"ct":2700,"v":80}</code>).</dd>
+        <dt>topic <span class="property-type">string</span></dt>
+        <dd>MQTT topic the value came from.</dd>
         <dt>mac <span class="property-type">string</span></dt>
-        <dd>MAC address of the device.</dd>
-        <dt>devtype <span class="property-type">number</span></dt>
-        <dd>type code (ex. <code>128</code> BIN_IN, <code>129</code> REL, <code>130</code> TEMPERATURE).</dd>
-        <dt>attribute <span class="property-type">number</span></dt>
-        <dd>attribute number (device/v1 only).</dd>
-        <dt>valtype <span class="property-type">string</span></dt>
-        <dd>legacy value type, only for legacy types (then <code>devtype</code> and <code>attribute</code> are not set). Numeric legacy values are converted to numbers.</dd>
+        <dd>MAC address of the device, ex. <code>1f242</code>.</dd>
         <dt>index <span class="property-type">number</span></dt>
-        <dd>channel index, counted from <code>0</code>.</dd>
+        <dd>channel index (device/v1 from <code>0</code>, legacy from <code>1</code>).</dd>
+        <dt>devtype <span class="property-type">number</span></dt>
+        <dd>device/v1 type code, ex. <code>129</code> relay, <code>136</code> blind. Not set for legacy types.</dd>
+        <dt>attribute <span class="property-type">number</span></dt>
+        <dd>device/v1 attribute, ex. blind <code>0</code> position, <code>1</code> slat, <code>2</code> motor. Not set for legacy types.</dd>
+        <dt>valtype <span class="property-type">string</span></dt>
+        <dd>legacy value type, ex. <code>f</code> flag, <code>t</code> temperature. Set only for legacy types.</dd>
     </dl>
+
     <h3>Details</h3>
-    <h4>Target device (required)</h4>
-    Click the search icon to discover devices. Devices, types and channel descriptions come from the server (<code>get_devices</code> over <code>rpc/v2</code>), attributes from retained states (<code>device/v1/state/leaf/#</code>).
-    Older CAN devices which are not available on <code>device/v1</code> are listed with <code>- legacy</code> and use the legacy API.
-    <h4>Legacy types</h4>
-    The <i>Legacy (ampio/...)</i> group of the Type field lists value types of the legacy API seen on the device (ex. <code>f</code> flags, <code>i</code> inputs, <code>o</code> outputs, <code>t</code> temperatures, <code>au16l</code> M-SENS sensors).
-    They use <code>ampio/from/&lt;MAC&gt;/state/&lt;type&gt;/&lt;index&gt;</code> and <code>ampio/to/&lt;MAC&gt;/&lt;type&gt;/&lt;index&gt;/cmd</code> with plain values; indexes count from <code>1</code>.
-    <h4>Type (required)</h4>
-    Type of the value to read. Only types discovered on the selected device are listed. Types with nothing to read are hidden.
-    <h4>Attribute (required)</h4>
-    All readable attributes of the type are listed (<code>[R]</code> read only, <code>[RW]</code> read/write), ex. blind position, slat position, motor state. Expected value (range, enum values or object fields) is shown below the field.
-    <h4>Index (required)</h4>
-    Channel number counted from <code>0</code> (ex. relay 1 is index <code>0</code>).
+    <p>Pick the server, click <i class="fa fa-search"></i> and choose the device, type, attribute and channel.
+       The box below the fields shows the expected value and the exact MQTT topic the node listens to.</p>
+    <h4>Server</h4>
+    <p>Ampio v2 Config node with the MQTT broker of the Ampio server. Deploy a new or changed config before searching for devices.</p>
+    <h4>Target device</h4>
+    <p>Devices found on the server, with names from Ampio Designer. Older CAN modules (ex. M-SENS, M-REL-10s, M-DIM-2s) are marked <i>legacy</i>:
+       the server does not publish them on the new API, they are read through the legacy API.</p>
+    <h4>Type</h4>
+    <p>The <i>device/v1</i> group lists channel types the device has (ex. Relay, Blind, AC dimmer, Binary Flag); types with nothing to read are hidden.
+       The <i>Legacy (ampio/...)</i> group lists value types of the legacy API the device publishes:</p>
+    <ul>
+        <li><code>i</code> digital inputs, <code>o</code> outputs, <code>a</code> analog outputs, <code>f</code> flags</li>
+        <li><code>t</code> temperatures, <code>rs</code> heating zone set temperatures</li>
+        <li><code>au16l</code> M-SENS sensors: 1 humidity, 2 absolute pressure, 3 loudness, 4 lux, 5 IAQ, 6 relative pressure, 7 CO2</li>
+        <li><code>afu8</code>, <code>afi16</code> analog flags, <code>au32</code> 32 bit values, <code>armed</code>/<code>alarm</code>/... alarm zones</li>
+    </ul>
+    <h4>Attribute</h4>
+    <p>Part of the channel to read, device/v1 only. Most types have just <code>0</code>; blinds, HVAC, climate, buttons and others have more.
+       <code>[R]</code> read only, <code>[RW]</code> read and write.</p>
+    <h4>Index</h4>
+    <p>Channel of the device, with its description from Designer if set. device/v1 counts from <code>0</code> (relay 1 = index 0), legacy counts from <code>1</code>.</p>
     <h4>Ignore Retain Flag</h4>
-    When checked, retained messages (last known state sent on connect) are not passed on.
+    <p>The server keeps the last state of every channel and sends it on deploy or reconnect. Check to pass on only real changes.</p>
+
+    <h3>Example</h3>
+    <p>Relay 2 of <code>1f242</code>: type <code>129 - Relay</code>, attribute <code>0</code>, index <code>1</code>
+       → listens to <code>device/v1/state/leaf/1f242/129/0/1</code>, outputs <code>payload: 1</code> when the relay turns on.</p>
+    <p>Temperature 1 of an M-SENS <code>1fe5c</code>: type <code>t - Temperature</code>, index <code>1</code>
+       → listens to <code>ampio/from/1FE5C/state/t/1</code>, outputs <code>payload: 21.7</code>.</p>
 </script>

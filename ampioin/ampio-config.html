@@ -78,3 +78,25 @@
         }
     });
 </script>
+
+<script type="text/x-red" data-help-name="ampiov2config">
+    <p>Connection to the MQTT broker of an Ampio server (M-SERV), shared by all Ampio v2 nodes using it.</p>
+    <h3>Connection</h3>
+    <dl class="message-properties">
+        <dt>Server <span class="property-type">string</span></dt>
+        <dd>IP address or host name of the Ampio server, ex. <code>192.168.1.10</code>.
+            Leave empty when Node-RED runs on the M-SERV itself: the local socket <code>/var/run/ampio/mqtt.sock</code> is used.</dd>
+        <dt>Port <span class="property-type">number</span></dt>
+        <dd>MQTT port, default <code>1883</code>.</dd>
+    </dl>
+    <h3>Credentials</h3>
+    <dl class="message-properties">
+        <dt>User, Password <span class="property-type">string</span></dt>
+        <dd>MQTT login of the Ampio server, if the broker requires one.</dd>
+    </dl>
+    <h3>Details</h3>
+    <p>After adding the config or changing it, <b>Deploy</b> before searching for devices in Ampio v2 IN/OUT:
+       the device list is loaded through the running config node.</p>
+    <p>All nodes share one MQTT connection. Searching for devices opens a short separate connection, so nodes do not receive retained states again.</p>
+    <p>Can be used next to the original <code>node-red-contrib-ampio</code> package; both have their own nodes and connections.</p>
+</script>
