@@ -3,6 +3,15 @@ Ampio add-on made to use Ampio Smart Home devices in Node-RED, using the `device
 
 Published as `node-red-contrib-ampio-v2`. It can be installed alongside the original `node-red-contrib-ampio`: all node types (`Ampio v2 IN`, `Ampio v2 OUT`, `Ampio v2 LCD`, `Ampio v2 Events`, `ampiov2config`), the palette category (`Ampio v2`) and editor endpoints (`/ampio-v2/...`) have their own names, so existing v1 flows keep working.
 
+## Origin
+This package is a fork of [node-red-contrib-ampio](https://www.npmjs.com/package/node-red-contrib-ampio) by Ampio Sp. z o.o.
+(source: [github.com/ampio-com/node-red-contrib-ampio](https://github.com/ampio-com/node-red-contrib-ampio)), adapted to the new Ampio MQTT API.
+It keeps the original ISC license and copyright, see [LICENSE](LICENSE), and is maintained separately from the original package.
+
+Source of this fork: [github.com/agpl/node-red-contrib-ampio-v2](https://github.com/agpl/node-red-contrib-ampio-v2).
+
+Leaf type definitions (`ampioin/db/leafdefs.json`) are generated from the Ampio Designer web application served by the Ampio server, see [Leaf definitions](#leaf-definitions).
+
 ## Pre-requisites
 You need Ampio Smart Home system, because this module is meant only to integrate it with another node-red plugins.
 You also need M-SERV-s with latest firmware, or Ampio Smart Home server installed in docker and connected through special serial-CAN adapter with Docker host device.
