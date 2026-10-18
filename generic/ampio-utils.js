@@ -341,3 +341,54 @@ exports.discover_devices = function (rpcDevices, topics, legacyTopics, apiDevice
         return {mac: mac, name: info.name || api.name, legacy: leafs.length === 0, leafs: leafs, legacyTypes: legacyTypes};
     });
 }
+
+// Audit: describe one state change. devices = map mac -> discover_devices() entry.
+// Returns {value, moduleMac, moduleName, valueType, valueName, index, api} or null for other topics.
+exports.describe_change = function (topic, value, devices, leafdefs, legacydefs) {
+    const p = topic.split('/');
+    if (p.length === 8 && p[0] === 'device' && p[2] === 'state' && p[3] === 'leaf') {
+        const mac = p[4], type = Number(p[5]), attribute = Number(p[6]), index = Number(p[7]);
+        const dev = devices[mac];
+        const def = leafdefs[type];
+        const attr = def && def.attributes[attribute];
+        const leaf = dev && dev.leafs.find(function (l) { return l.type === type; });
+        let valueType = def ? def.label : 'type ' + type;
+        if (attr && attr.label) {
+            valueType += ' - ' + attr.label;
+        } else if (attribute !== 0) {
+            valueType += ' - attribute ' + attribute;
+        }
+        return {
+            value: value,
+            moduleMac: mac,
+            moduleName: dev && dev.name || undefined,
+            valueType: valueType,
+            valueName: leaf && leaf.names[index] || undefined,
+            index: index,
+            api: 'device/v1'
+        };
+    }
+    if (p.length === 6 && p[0] === 'ampio' && p[1] === 'from' && p[3] === 'state') {
+        const mac = p[2].toLowerCase(), valtype = p[4], index = Number(p[5]);
+        const dev = devices[mac];
+        const lt = dev && (dev.legacyTypes || []).find(function (l) { return l.valtype === valtype; });
+        return {
+            value: value,
+            moduleMac: mac,
+            moduleName: dev && dev.name || undefined,
+            valueType: legacydefs[valtype] ? legacydefs[valtype].label : valtype,
+            valueName: lt && lt.names[index] || undefined,
+            index: index,
+            api: 'legacy'
+        };
+    }
+    return null;
+}
+
+// Legacy value types which newer modules also publish on device/v1, used to avoid duplicate audit entries
+const LEGACY_ON_V1 = {i: [128], o: [129, 131, 132, 133], a: [131, 132, 133], f: [139], t: [130], rgbw: [134], afu8: [149]};
+
+exports.legacy_on_v1 = function (dev, valtype) {
+    const types = LEGACY_ON_V1[valtype];
+    return !!(dev && !dev.legacy && types && dev.leafs.some(function (l) { return types.indexOf(l.type) !== -1; }));
+}

@@ -39,6 +39,7 @@ console.log = () => {};
 require(path.join(ROOT, 'ampioin/ampio-config.js'))(RED);
 require(path.join(ROOT, 'ampioin/in.js'))(RED);
 require(path.join(ROOT, 'ampioin/out.js'))(RED);
+require(path.join(ROOT, 'ampioin/audit.js'))(RED);
 const au = require(path.join(ROOT, 'generic/ampio-utils.js'));
 
 const mk = (t, c) => { const n = {}; types[t].call(n, c); return n; };
@@ -170,6 +171,31 @@ async function integrationTests(s17) {
     ok(lf && JSON.stringify(lf.indexes) === '[1,3]' && lf.names[3] === 'Obecność', 'discovery legacy types, indexes and names');
     ok(legacy && legacy.legacyTypes.some(x => x.valtype === 'rs'), 'discovery legacy zone type');
     ok((keep.sent || []).length === before, 'discovery does not re-trigger IN nodes');
+
+    // audit: names from discovery, retained only seeds, repeats skipped, legacy duplicates of device/v1 skipped
+    const audit = mk('Ampio v2 Audit', { id: 'audit', server: 'cfg', source: 'auto', onlychanges: true, retained: false });
+    await wait(1500);
+    ok(audit._status && audit._status.text === 'listening, 2 devices', 'audit discovers devices: ' + (audit._status && audit._status.text));
+    ext.publish('device/v1/state/leaf/1a2b/129/0/1', '{"v":1}');
+    ext.publish('device/v1/state/leaf/1a2b/129/0/1', '{"v":1}');
+    ext.publish('ampio/from/5555/state/f/3', '0');
+    ext.publish('ampio/from/1A2B/state/o/1', '1');
+    ext.publish('ampio/from/1A2B/state/rs/1', '20');
+    ext.publish('device/v1/state/leaf/9999/129/0/0', '{"v":0}');
+    await wait(300);
+    const got = (audit.sent || []).map(m => m.payload);
+    const relay = got.find(c => c.moduleMac === '1a2b' && c.valueType === 'Relay');
+    ok(relay && relay.value === 1 && relay.moduleName === 'Salon' && relay.valueName === 'Lampa żółta' && relay.index === 1 && relay.api === 'device/v1', 'audit device/v1 change with names ' + JSON.stringify(relay));
+    ok(got.filter(c => c.moduleMac === '1a2b' && c.valueType === 'Relay').length === 1, 'audit skips repeated value');
+    const flag = got.find(c => c.moduleMac === '5555');
+    ok(flag && flag.value === 0 && flag.valueType === 'Flag' && flag.valueName === 'Obecność' && flag.moduleName === 'M-SENS stary' && flag.api === 'legacy', 'audit legacy change with names ' + JSON.stringify(flag));
+    ok(!got.some(c => c.api === 'legacy' && c.moduleMac === '1a2b' && c.valueType === 'Digital output'), 'audit skips legacy duplicate of device/v1 value');
+    ok(got.some(c => c.api === 'legacy' && c.moduleMac === '1a2b' && c.valueType === 'Zone set temperature' && c.value === 20), 'audit keeps legacy value without device/v1 counterpart');
+    const unknown = got.find(c => c.moduleMac === '9999');
+    ok(unknown && unknown.moduleName === undefined && unknown.valueName === undefined && 'valueName' in unknown, 'audit unknown module: names undefined');
+    ok(!got.some(c => c.valueType && c.valueType.startsWith('Blind')), 'audit does not report retained states');
+    ok(audit.sent && audit.sent.every(m => m.topic && typeof m.payload === 'object'), 'audit msg has topic and payload object');
+    await new Promise(r => audit.emit('close', true, r));
 
     const defsRes = await request('/ampio-v2/cfg/leafdefs');
     ok(defsRes.body && defsRes.body[136].label === 'Blind', 'leafdefs endpoint');

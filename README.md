@@ -1,7 +1,7 @@
 ## Ampio Node-RED module (v2)
 Ampio add-on made to use Ampio Smart Home devices in Node-RED, using the `device/v1` MQTT API.
 
-Published as `node-red-contrib-ampio-v2`. It can be installed alongside the original `node-red-contrib-ampio`: all node types (`Ampio v2 IN`, `Ampio v2 OUT`, `Ampio v2 LCD`, `Ampio v2 Events`, `ampiov2config`), the palette category (`Ampio v2`) and editor endpoints (`/ampio-v2/...`) have their own names, so existing v1 flows keep working.
+Published as `node-red-contrib-ampio-v2`. It can be installed alongside the original `node-red-contrib-ampio`: all node types (`Ampio v2 IN`, `Ampio v2 OUT`, `Ampio v2 LCD`, `Ampio v2 Events`, `Ampio v2 Audit`, `ampiov2config`), the palette category (`Ampio v2`) and editor endpoints (`/ampio-v2/...`) have their own names, so existing v1 flows keep working.
 
 ## Origin
 This package is a fork of [node-red-contrib-ampio](https://www.npmjs.com/package/node-red-contrib-ampio) by Ampio Sp. z o.o.
@@ -21,11 +21,12 @@ This node should be pre-installed on your M-SERV-s. In case of having software i
 
 ## Using this add-on
 After having this module installed, you will see helpful instructions in Help sections.
-Basically, after installing you will have 4 add-ons:
+Basically, after installing you will have 5 add-ons:
 - Ampio v2 IN, node meant to receive informations from modules, such like: states of inputs, outputs, flags, temperatures from sensors, states of analog inputs/outputs, and 8,16,32-bit measurements. Values will be delivered immediately, after they will change, they are not sent periodically.
 - Ampio v2 OUT, meant to control outputs and flagfs ion Ampio system. You can also change temperature controller desired temperatures.
 - Ampio v2 LCD, a complete tool to display text and shapes on LCD screen on MDOT touch panels.
 - Ampio v2 Events, to send and/or receive events from your CAN Network.
+- Ampio v2 Audit, reports every value change in the system as `{value, moduleMac, moduleName, valueType, valueName, index, api}`, with module and channel names from Ampio Designer.
 
 ## Leaf definitions
 `ampioin/db/leafdefs.json` lists every leaf type with its attributes (read/write access, value kind, range, unit, enum values, labels). It is generated from the Ampio Designer bundle served by the server:
@@ -44,7 +45,7 @@ The script only evaluates plain object literals cut from the bundle, in an empty
 Disclaimer: every version lower than 1.0.0 is considered as beta. I do all my best to make every release as stable as possible, but due to fast development of protocol, API changes may occur. 1.0.0 is planned after transition to /b/ MQTT broadcasts, which requires many changes.
 
 ### 0.7.x
-0.7.0 - Package renamed to `node-red-contrib-ampio-v2` with own node type names, so it does not collide with v1. **Breaking:** Ampio IN/OUT moved to the new MQTT API. State is read from `device/v1/state/leaf/<MAC>/<type>/<attribute>/<index>` and commands are sent to `device/v1/set/leaf/<MAC>/<type>/<attribute>/<index>`, with JSON payload `{"v": value}` (value can be an object, ex. RGBW `{h,s,v}`). Devices, types, channel counts, device names and channel descriptions are discovered with `get_devices` over `rpc/v2/request/ampio-mqtt/<id>` (same source as Ampio Designer); attributes come from retained states. IN/OUT editors list all readable/writable attributes of every type (generated from Ampio Designer definitions) with the expected value. OUT sends `true`/`false` as `1`/`0` and passes optional `msg.time`. Older CAN devices which are not available on `device/v1` (M-SENS, M-REL-10s, M-DIM-2s, ...) are listed as legacy and used through the legacy `ampio/from|to/<MAC>/...` topics; legacy value types (flags, inputs, outputs, temperatures, sensors, zones, ...) are also offered for every device in a separate *Legacy* group, with channel names from `device_api/to/list`. Ampio v2 OUT can send raw CAN frames (type `raw`, hex payload) to `ampio/to/<mac>/raw`. Raw CAN commands, I/O descriptions and old value types were removed. **Existing IN/OUT nodes must be reconfigured (device, type, attribute, index).**<br>
+0.7.0 - Package renamed to `node-red-contrib-ampio-v2` with own node type names, so it does not collide with v1. **Breaking:** Ampio IN/OUT moved to the new MQTT API. State is read from `device/v1/state/leaf/<MAC>/<type>/<attribute>/<index>` and commands are sent to `device/v1/set/leaf/<MAC>/<type>/<attribute>/<index>`, with JSON payload `{"v": value}` (value can be an object, ex. RGBW `{h,s,v}`). Devices, types, channel counts, device names and channel descriptions are discovered with `get_devices` over `rpc/v2/request/ampio-mqtt/<id>` (same source as Ampio Designer); attributes come from retained states. IN/OUT editors list all readable/writable attributes of every type (generated from Ampio Designer definitions) with the expected value. OUT sends `true`/`false` as `1`/`0` and passes optional `msg.time`. Older CAN devices which are not available on `device/v1` (M-SENS, M-REL-10s, M-DIM-2s, ...) are listed as legacy and used through the legacy `ampio/from|to/<MAC>/...` topics; legacy value types (flags, inputs, outputs, temperatures, sensors, zones, ...) are also offered for every device in a separate *Legacy* group, with channel names from `device_api/to/list`. Ampio v2 OUT can send raw CAN frames (type `raw`, hex payload) to `ampio/to/<mac>/raw`. New Ampio v2 Audit node reports every value change with module and channel names. Raw CAN commands, I/O descriptions and old value types were removed. **Existing IN/OUT nodes must be reconfigured (device, type, attribute, index).**<br>
 
 ### 0.6.x
 0.6.8 - support for CO2 in M-SENS<br>

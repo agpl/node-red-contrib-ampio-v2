@@ -325,7 +325,8 @@ module.exports = function(RED) {
         const DEVICE_LIST_REQUEST = 'device_api/to/list';
         const DEVICE_LIST_RESPONSE = 'device_api/from/list';
         const DISCOVERY_TIME = 2000;
-        RED.httpAdmin.get('/ampio-v2/'+node_id+'/devices/v1/list', RED.auth.needsPermission('ampiov2.read'),function(req,res){
+        // done(err, devices); err.status carries an HTTP status for the editor endpoint
+        node.discoverDevices = function(done){
             // Separate client, so retained states re-sent on subscribe do not reach IN nodes
             const client = node.createClient(Object.assign({}, node.options, {
                 clientId: node.options.clientId + '_discovery',
@@ -350,7 +351,13 @@ module.exports = function(RED) {
                 finished = true;
                 clearTimeout(timer);
                 client.end(true);
-                res.status(status).json(body);
+                if(status === 200){
+                    done(null, body);
+                } else {
+                    const err = new Error(body);
+                    err.status = status;
+                    done(err);
+                }
             }
             function tryFinish(){
                 if(rpcDevices && (apiDevices || apiWaitOver) && !collecting){
@@ -415,6 +422,16 @@ module.exports = function(RED) {
                 node.warn("get_devices timeout, devices discovered without names");
                 finish(200, au.discover_devices([], topics, legacyTopics, apiDevices));
             }, DISCOVERY_TIME * 2);
+        };
+
+        RED.httpAdmin.get('/ampio-v2/'+node_id+'/devices/v1/list', RED.auth.needsPermission('ampiov2.read'),function(req,res){
+            node.discoverDevices(function(err, devices){
+                if(err){
+                    res.status(err.status || 500).json(err.message);
+                    return;
+                }
+                res.json(devices);
+            });
         });
 
         RED.httpAdmin.get('/ampio-v2/'+node_id+'/legacydefs', RED.auth.needsPermission('ampiov2.read'),function(req,res){

@@ -1,0 +1,98 @@
+<script type="text/javascript">
+    RED.nodes.registerType('Ampio v2 Audit',{
+        category: 'Ampio v2',
+        color: '#d4d9db',
+        defaults: {
+            name: {value:""},
+            source: {value:"auto"},
+            onlychanges: {value:true},
+            retained: {value:false},
+            server: {type:"ampiov2config", required:true}
+        },
+        inputs:0,
+        outputs:1,
+        icon: "face.png",
+        label: function() {
+            return this.name||"Ampio v2 Audit";
+        }
+    });
+</script>
+
+<script type="text/x-red" data-template-name="Ampio v2 Audit">
+    <div class="form-row">
+        <label for="node-input-server"><i class="icon-tag"></i> Server</label>
+        <input type="text" id="node-input-server">
+    </div>
+    <div class="form-row">
+        <label for="node-input-source"><i class="icon-tag"></i> Source</label>
+        <select id="node-input-source" style="width: 70%;">
+            <option value="auto">device/v1 + legacy without duplicates</option>
+            <option value="all">everything (device/v1 and legacy)</option>
+            <option value="v1">device/v1 only</option>
+            <option value="legacy">legacy API only</option>
+        </select>
+    </div>
+    <div class="form-tips" style="margin-bottom: 12px;">
+        Newer modules publish many values on both APIs. The default skips a legacy value when the same module has the
+        matching device/v1 type (ex. legacy flag <code>f</code> and <code>139 - Binary Flag</code>), so each change is reported once.
+    </div>
+    <div class="form-row">
+        <label for="node-input-onlychanges"><i class="icon-tag"></i> Only changes</label>
+        <input type="checkbox" id="node-input-onlychanges" style="display: inline-block; width: auto; vertical-align: top;">
+        <span>skip messages repeating the last value</span>
+    </div>
+    <div class="form-row">
+        <label for="node-input-retained"><i class="icon-tag"></i> Retained</label>
+        <input type="checkbox" id="node-input-retained" style="display: inline-block; width: auto; vertical-align: top;">
+        <span>also report last known states sent on deploy or reconnect</span>
+    </div>
+    <div class="form-row">
+        <label for="node-input-name"><i class="icon-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+</script>
+
+<script type="text/x-red" data-help-name="Ampio v2 Audit">
+    <p>Reports every value change in the Ampio system, one message per change, with module and channel names.</p>
+
+    <h3>Outputs</h3>
+    <dl class="message-properties">
+        <dt>payload <span class="property-type">object</span></dt>
+        <dd>
+            <ul>
+                <li><code>value</code>: new value, ex. <code>1</code>, <code>21.7</code> or <code>{"h":120,"s":100,"v":50}</code></li>
+                <li><code>moduleMac</code>: MAC of the module, ex. <code>"1f242"</code></li>
+                <li><code>moduleName</code>: module name from Ampio Designer, <code>undefined</code> if unknown</li>
+                <li><code>valueType</code>: kind of value, ex. <code>"Relay"</code>, <code>"Blind - Position"</code>, <code>"Flag"</code>, <code>"Temperature"</code></li>
+                <li><code>valueName</code>: channel description from Ampio Designer, <code>undefined</code> if not set</li>
+                <li><code>index</code>: channel index (device/v1 from <code>0</code>, legacy from <code>1</code>)</li>
+                <li><code>api</code>: <code>"device/v1"</code> or <code>"legacy"</code></li>
+            </ul>
+        </dd>
+        <dt>topic <span class="property-type">string</span></dt>
+        <dd>MQTT topic of the change, ex. <code>device/v1/state/leaf/1f242/129/0/1</code>.</dd>
+    </dl>
+
+    <h3>Details</h3>
+    <p>Listens to <code>device/v1/state/leaf/#</code> and <code>ampio/from/+/state/#</code>.
+       Module and channel names are read from the server on deploy and refreshed every 15 minutes.</p>
+    <h4>Source</h4>
+    <p>The default reports device/v1 values and legacy values of older modules (and legacy values without a device/v1 counterpart, ex. server logic flags),
+       without reporting the same change twice. The other options report everything, or one API only.</p>
+    <h4>Only changes</h4>
+    <p>Skips a message when the value is the same as the last one on that channel.</p>
+    <h4>Retained</h4>
+    <p>On deploy and reconnect the server sends the last known state of every channel. By default these only set the starting values and are not reported;
+       check to report them too (hundreds of messages at once).</p>
+
+    <h3>Example</h3>
+    <pre>{
+  "value": 1,
+  "moduleMac": "1f242",
+  "moduleName": "M-REL-C10s ogrz.1",
+  "valueType": "Relay",
+  "valueName": "Ogrzewanie Ściana Salon",
+  "index": 1,
+  "api": "device/v1"
+}</pre>
+</script>
