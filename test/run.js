@@ -73,6 +73,10 @@ function unitTests() {
     const rec = (code, idx, name) => { const n = Buffer.from(name); const b = Buffer.alloc(10 + n.length); b.writeUInt16LE(b.length, 0); b.writeUInt16LE(code, 2); b.writeUInt16LE(idx, 4); n.copy(b, 10); return b; };
     const ld = au.parse_legacy_descriptions(Buffer.concat([rec(1, 0, '.'), rec(6, 0, 'Obecność'), rec(39, 2, 'Ciśnienie względne'), rec(99, 0, 'x')]).toString('base64'));
     ok(ld.f[1] === 'Obecność' && ld.au16l[6] === 'Ciśnienie względne' && Object.keys(ld).length === 2, 'parse_legacy_descriptions');
+    ok(au.raw_topic('15D6C') === 'ampio/to/15d6c/raw', 'raw_topic lowercases MAC');
+    ok(au.encode_raw('0x09 01') === '0901' && au.encode_raw(Buffer.from([9, 1])) === '0901' && au.encode_raw([0x0a, 255]) === '0aff', 'encode_raw formats');
+    let rawErr; try { au.encode_raw('xyz'); } catch (e) { rawErr = e; }
+    ok(rawErr instanceof Error, 'encode_raw rejects non-hex');
     return s17;
 }
 
@@ -126,6 +130,13 @@ async function integrationTests(s17) {
     ok(seen.some(([t, p]) => t === 'ampio/to/1FE5C/f/5/cmd' && p === '1'), 'legacy OUT sends to ampio/to/.../cmd');
     ok(seen.some(([t, p]) => t === 'ampio/to/1A2B/o/0/cmd' && p === '1'), 'msg.valtype switches OUT to legacy API');
     ok(seen.some(([t, p]) => t === 'device/v1/set/leaf/1fe5c/139/0/5' && p === '{"v":1}'), 'msg.devtype switches legacy OUT to device/v1');
+    const outR = mk('Ampio v2 OUT', { id: 'outR', server: 'cfg', mac: '15D6C', valtype: 'raw', devtype: '', index: 0 });
+    let badRaw;
+    outR.emit('input', { payload: '09 01' }, null, () => {});
+    outR.emit('input', { payload: 'zz' }, null, e => (badRaw = e));
+    await wait(200);
+    ok(seen.some(([t, p]) => t === 'ampio/to/15d6c/raw' && p === '0901'), 'raw OUT sends hex to ampio/to/<mac>/raw');
+    ok(badRaw instanceof Error, 'raw OUT rejects invalid payload');
 
     // fake ampio-mqtt rpc: macProd differs from macUser, topics use macUser
     ext.on('message', (t, p) => {

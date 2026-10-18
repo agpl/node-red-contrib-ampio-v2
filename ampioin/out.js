@@ -17,13 +17,17 @@ module.exports = function(RED) {
             return;
         }
 
-        // msg.valtype selects the legacy ampio/ API, msg.devtype device/v1, otherwise node configuration decides
+        // msg.valtype selects the legacy ampio/ API ("raw" = raw CAN frame), msg.devtype device/v1,
+        // otherwise node configuration decides
         function target(msg) {
             const mac = msg.hasOwnProperty('mac') ? String(msg.mac) : node.mac;
             const index = Number(msg.hasOwnProperty('index') ? msg.index : (node.index || 0));
             const valtype = msg.hasOwnProperty('valtype') ? String(msg.valtype) : (msg.hasOwnProperty('devtype') ? '' : node.valtype);
             if (!mac || !Number.isInteger(index)) {
                 throw new Error("Invalid target: mac=" + mac + " index=" + index);
+            }
+            if (valtype === 'raw') {
+                return {topic: au.raw_topic(mac), payload: au.encode_raw(msg.payload)};
             }
             if (valtype !== '') {
                 return {topic: au.legacy_set_topic(mac, valtype, index), payload: au.encode_legacy_value(msg.payload)};

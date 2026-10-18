@@ -227,6 +227,23 @@ exports.encode_legacy_value = function (value) {
     return String(value);
 }
 
+// Raw CAN frame: ampio/to/<mac>/raw with hex payload, MAC lowercase hex as sent by Ampio Designer
+exports.raw_topic = function (mac) {
+    return 'ampio/to/' + String(mac).toLowerCase() + '/raw';
+}
+
+// accepts hex string ("0901", "09 01", "0x0901"), Buffer or array of bytes
+exports.encode_raw = function (value) {
+    if (Buffer.isBuffer(value) || Array.isArray(value)) {
+        return Buffer.from(value).toString('hex');
+    }
+    const hex = String(value).replace(/^0x/i, '').replace(/[\s:,-]/g, '');
+    if (!/^([0-9a-fA-F]{2})+$/.test(hex)) {
+        throw new Error('raw payload must be hex bytes, got "' + value + '"');
+    }
+    return hex.toLowerCase();
+}
+
 // device_api list "descriptions": records [len u16][code u16][index u16][4 bytes][utf-8 name], little endian.
 // Description code -> [legacy valtype, offset added to index]
 const LEGACY_DESCRIPTION_CODES = {

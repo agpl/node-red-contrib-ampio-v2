@@ -95,10 +95,12 @@
                 // device/v1 types, hidden when they have nothing to read (IN) or write (OUT)
                 let types = l ? unique(l.map(function(x){ return x.type; })) : (dev && dev.legacy ? [] : Object.keys(Defs).map(Number));
                 types = types.filter(function(t){ return !Defs[t] || defAttrs(t).length; });
-                // legacy value types: those seen on the device, plus write-only ones that come with them (ex. rm with rs)
+                // legacy value types: those seen on the device, write-only ones that come with them (ex. rm with rs)
+                // and those available on every device (raw CAN frame)
                 let legacy = dev ? (dev.legacyTypes || []).map(function(x){ return x.valtype; }) : Object.keys(LegacyDefs);
                 Object.keys(LegacyDefs).forEach(function(v){
-                    if(LegacyDefs[v].with && legacy.indexOf(LegacyDefs[v].with) !== -1 && legacy.indexOf(v) === -1){
+                    const d = LegacyDefs[v];
+                    if((d.always || (d.with && legacy.indexOf(d.with) !== -1)) && legacy.indexOf(v) === -1){
                         legacy.push(v);
                     }
                 });
@@ -132,6 +134,7 @@
                 $('#node-input-valtype').val(s.legacy ? s.type : '');
                 $('#node-input-devtype').val(s.legacy ? '' : (isNaN(s.type) ? '' : s.type));
                 $('#ampio-attribute-row').toggle(!s.legacy);
+                $('#ampio-index-row').toggle(!(s.legacy && LegacyDefs[s.type] && LegacyDefs[s.type].noIndex));
                 if(s.legacy){
                     $('#node-input-attribute').empty().append($('<option>').val(0).text('0'));
                     FillIndexes();
@@ -278,7 +281,7 @@
     </div>
     <div class="form-tips" id="ampio-value-hint" style="display: none;"></div>
     <div class="form-tips" id="ampio-legacy-hint" style="display: none;"><b>Legacy API:</b> uses <code>ampio/from|to/&lt;MAC&gt;/...</code> topics with plain values, for older CAN devices.</div>
-    <div class="form-row">
+    <div class="form-row" id="ampio-index-row">
         <label for="node-input-index"><i class="icon-tag"></i> Index</label>
         <select id="node-input-index" style="width: 70%;"></select>
     </div>

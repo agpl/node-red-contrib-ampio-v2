@@ -95,10 +95,12 @@
                 // device/v1 types, hidden when they have nothing to read (IN) or write (OUT)
                 let types = l ? unique(l.map(function(x){ return x.type; })) : (dev && dev.legacy ? [] : Object.keys(Defs).map(Number));
                 types = types.filter(function(t){ return !Defs[t] || defAttrs(t).length; });
-                // legacy value types: those seen on the device, plus write-only ones that come with them (ex. rm with rs)
+                // legacy value types: those seen on the device, write-only ones that come with them (ex. rm with rs)
+                // and those available on every device (raw CAN frame)
                 let legacy = dev ? (dev.legacyTypes || []).map(function(x){ return x.valtype; }) : Object.keys(LegacyDefs);
                 Object.keys(LegacyDefs).forEach(function(v){
-                    if(LegacyDefs[v].with && legacy.indexOf(LegacyDefs[v].with) !== -1 && legacy.indexOf(v) === -1){
+                    const d = LegacyDefs[v];
+                    if((d.always || (d.with && legacy.indexOf(d.with) !== -1)) && legacy.indexOf(v) === -1){
                         legacy.push(v);
                     }
                 });
@@ -132,6 +134,7 @@
                 $('#node-input-valtype').val(s.legacy ? s.type : '');
                 $('#node-input-devtype').val(s.legacy ? '' : (isNaN(s.type) ? '' : s.type));
                 $('#ampio-attribute-row').toggle(!s.legacy);
+                $('#ampio-index-row').toggle(!(s.legacy && LegacyDefs[s.type] && LegacyDefs[s.type].noIndex));
                 if(s.legacy){
                     $('#node-input-attribute').empty().append($('<option>').val(0).text('0'));
                     FillIndexes();
@@ -278,7 +281,7 @@
     </div>
     <div class="form-tips" id="ampio-value-hint" style="display: none;"></div>
     <div class="form-tips" id="ampio-legacy-hint" style="display: none;"><b>Legacy API:</b> uses <code>ampio/from|to/&lt;MAC&gt;/...</code> topics with plain values, for older CAN devices.</div>
-    <div class="form-row">
+    <div class="form-row" id="ampio-index-row">
         <label for="node-input-index"><i class="icon-tag"></i> Index</label>
         <select id="node-input-index" style="width: 70%;"></select>
     </div>
@@ -304,7 +307,7 @@
         <dt class="optional">attribute <span class="property-type">number</span></dt>
         <dd>overrides attribute number.</dd>
         <dt class="optional">valtype <span class="property-type">string</span></dt>
-        <dd>sends to the legacy API with this value type (ex. <code>f</code>, <code>o</code>, <code>rs</code>), payload is sent as a plain string. <code>msg.devtype</code> without <code>msg.valtype</code> sends to device/v1.</dd>
+        <dd>sends to the legacy API with this value type (ex. <code>f</code>, <code>o</code>, <code>rs</code>), payload is sent as a plain string. <code>raw</code> sends a raw CAN frame (hex). <code>msg.devtype</code> without <code>msg.valtype</code> sends to device/v1.</dd>
         <dt class="optional">index <span class="property-type">number</span></dt>
         <dd>overrides channel index, counted from <code>0</code>.</dd>
     </dl>
@@ -314,7 +317,8 @@
     Older CAN devices which are not available on <code>device/v1</code> are listed with <code>- legacy</code> and use the legacy API.
     <h4>Legacy types</h4>
     The <i>Legacy (ampio/...)</i> group of the Type field lists value types of the legacy API seen on the device (ex. <code>f</code> flags, <code>i</code> inputs, <code>o</code> outputs, <code>t</code> temperatures, <code>au16l</code> M-SENS sensors).
-    They use <code>ampio/from/&lt;MAC&gt;/state/&lt;type&gt;/&lt;index&gt;</code> and <code>ampio/to/&lt;MAC&gt;/&lt;type&gt;/&lt;index&gt;/cmd</code> with plain values; indexes count from <code>1</code>.
+    <code>raw - Raw CAN frame (hex)</code> sends <code>msg.payload</code> as hex bytes (ex. <code>"0901"</code>, a Buffer or an array of bytes) to <code>ampio/to/&lt;mac&gt;/raw</code>; it is available for every device. Raw frames are described in Ampio CAN documentation, recommended for advanced users only.
+        They use <code>ampio/from/&lt;MAC&gt;/state/&lt;type&gt;/&lt;index&gt;</code> and <code>ampio/to/&lt;MAC&gt;/&lt;type&gt;/&lt;index&gt;/cmd</code> with plain values; indexes count from <code>1</code>.
     <h4>Type (required)</h4>
     Type of the value to control. Only types discovered on the selected device are listed. Types with nothing to write are hidden.
     <h4>Attribute (required)</h4>

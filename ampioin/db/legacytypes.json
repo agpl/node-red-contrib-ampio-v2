@@ -18,5 +18,6 @@
     "alarm": {"label": "Alarm zone alarm", "rw": "R", "hint": "0 / 1"},
     "entrytime": {"label": "Alarm zone entry time", "rw": "R", "hint": "0 / 1"},
     "exittime": {"label": "Alarm zone exit time", "rw": "R", "hint": "0 / 1"},
-    "exittime10": {"label": "Alarm zone exit time (over 10 s)", "rw": "R", "hint": "0 / 1"}
+    "exittime10": {"label": "Alarm zone exit time (over 10 s)", "rw": "R", "hint": "0 / 1"},
+    "raw": {"label": "Raw CAN frame (hex)", "rw": "W", "always": true, "noIndex": true, "hint": "hex bytes, ex. 0901 (string, Buffer or array of bytes)"}
 }
