@@ -1,15 +1,29 @@
 {
   "name": "node-red-contrib-ampio-v2",
-  "version": "0.7.0",
+  "version": "1.0.0",
   "description": "Ampio node (device/v1 MQTT API), installable alongside node-red-contrib-ampio",
   "scripts": {
-    "test": "node test/run.js"
+    "lint": "eslint .",
+    "test": "node --test test/*.test.js",
+    "check": "npm run lint && npm test"
   },
   "keywords": [
     "ampio",
     "node-red"
   ],
+  "files": [
+    "ampioin/",
+    "!ampioin/.vscode/",
+    "generic/",
+    "tools/",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "node-red": {
+    "version": ">=3.0.0",
     "nodes": {
       "ampiov2in": "ampioin/in.js",
       "ampiov2out": "ampioin/out.js",
@@ -19,7 +33,13 @@
       "ampiov2config": "ampioin/ampio-config.js"
     }
   },
-  "author": "Ampio Sp. z o.o.",
+  "author": "Adam Gontarek",
+  "contributors": [
+    {
+      "name": "Ampio Sp. z o.o.",
+      "url": "https://github.com/ampio-com/node-red-contrib-ampio"
+    }
+  ],
   "license": "ISC",
   "homepage": "https://github.com/agpl/node-red-contrib-ampio-v2",
   "repository": "github:agpl/node-red-contrib-ampio-v2",
@@ -28,6 +48,9 @@
     "mqtt": "^4.2.6"
   },
   "devDependencies": {
-    "aedes": "^0.51.3"
+    "@eslint/js": "^9.17.0",
+    "aedes": "^0.51.3",
+    "eslint": "^9.17.0",
+    "globals": "^15.14.0"
   }
 }

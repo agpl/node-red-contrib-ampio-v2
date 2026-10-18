@@ -20,7 +20,7 @@ module.exports = function(RED) {
             if (ts == "#") {
                 return true;
             }
-            var re = new RegExp("^"+ts.replace(/([\[\]\?\(\)\\\\$\^\*\.|])/g,"\\$1").replace(/\+/g,"[^/]+").replace(/\/#$/,"(\/.*)?")+"$");
+            var re = new RegExp("^"+ts.replace(/([[\]?()\\$^*.|])/g,"\\$1").replace(/\+/g,"[^/]+").replace(/\/#$/,"(/.*)?")+"$");
             return re.test(t);
         }
 

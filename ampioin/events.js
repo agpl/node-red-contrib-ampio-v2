@@ -11,17 +11,16 @@ module.exports = function(RED) {
             outmsg.payload=msg.payload;
             outmsg.topic = 'ampio/to/event'
             this.brokerConn.publish(outmsg, function(err) {
-				let args = arguments;
-				let l = args.length;
 				done(err);
 			});
-            done();
         });
 
-        this.on('close', function() {
+        this.on('close', function(removed, done) {
             if (node.brokerConn) {
-                node.brokerConn.unsubscribe(node.topic,node.id, removed);
-                node.brokerConn.deregister(node,done);
+                node.brokerConn.unsubscribe('ampio/from/+/event', node.id, removed);
+                node.brokerConn.deregister(node, done);
+            } else {
+                done();
             }
         });
 

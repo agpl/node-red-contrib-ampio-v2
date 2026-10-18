@@ -3,7 +3,7 @@ module.exports = function(RED) {
         RED.nodes.createNode(this,config);
         var node = this;
         var leftPad = require('left-pad');
-        au = require('../generic/ampio-utils');
+        const au = require('../generic/ampio-utils');
 
         node.mac = au.sanitize_mac(config.mac);
         node.lcdfont = config.lcdfont;
@@ -46,7 +46,7 @@ module.exports = function(RED) {
             else if(msg.payload.hasOwnProperty('square')){
                 outstr = outstr + "04" + leftPad(msg.payload.square.x1.toString(16),2,'0') + leftPad(msg.payload.square.y1.toString(16),2,'0') + leftPad(msg.payload.square.x2.toString(16),2,'0') + leftPad(msg.payload.square.y2.toString(16),2,'0') + au.hex2rgb565(msg.payload.square.col).toUpperCase();
             }
-            else if(typeof msg.payload === ('string' || 'number')){
+            else if(typeof msg.payload === 'string' || typeof msg.payload === 'number'){
                 msg = msg.payload.toString();
                 if(node.lcdfont=='07' || msg.length > 11){
                     msg = msg.substr(0, 11);
@@ -55,7 +55,6 @@ module.exports = function(RED) {
                     msg = msg.substr(0, 6);
                 }
                 let msglen = msg.length;
-                var restofmsg = leftPad(msglen.toString(16),2,'0') + Buffer.from(msg,'utf-8').toString('hex');
                 outstr = outstr + node.lcdfont + au.decStrToHexStr(node.lcdxpos) + au.decStrToHexStr(node.lcdypos) + crgb565 + brgb565 + leftPad(msglen.toString(16),2,'0') + Buffer.from(msg,'utf-8').toString('hex');
             }
             //node.client.publish('ampio/to/'+mac+'/raw',outstr);
@@ -65,19 +64,16 @@ module.exports = function(RED) {
             outmsg.topic='ampio/to/'+node.mac+'/raw';
 
             this.brokerConn.publish(outmsg, function(err) {
-				let args = arguments;
-				let l = args.length;
 				done(err);
 			});
-
-			done();
             
         })
 
-        node.on('close', function() {
+        node.on('close', function(removed, done) {
             if (node.brokerConn) {
-                node.brokerConn.unsubscribe(node.topic,node.id, removed);
-                node.brokerConn.deregister(node,done);
+                node.brokerConn.deregister(node, done);
+            } else {
+                done();
             }
         });
 

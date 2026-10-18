@@ -1,6 +1,7 @@
-// Runs IN/OUT/config nodes against an in-process MQTT broker (aedes) with a stubbed Node-RED runtime.
-//   npm test
+// IN/OUT/Audit/config nodes against an in-process MQTT broker (aedes) with a stubbed Node-RED runtime
 'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
 const path = require('path');
 const net = require('net');
 const EventEmitter = require('events');
@@ -11,14 +12,13 @@ const ROOT = path.join(__dirname, '..');
 const PORT = 18831;
 const routes = {}, types = {}, nodes = {};
 const quiet = console.log;
-let failed = 0;
+const results = [];
 
 const RED = {
     nodes: {
         createNode(n, c) {
-            Object.assign(n, new EventEmitter());
-            n.on = EventEmitter.prototype.on;
-            n.emit = EventEmitter.prototype.emit;
+            Object.setPrototypeOf(n, EventEmitter.prototype);
+            EventEmitter.call(n);
             n.id = c.id;
             n.credentials = {};
             n.status = s => (n._status = s);
@@ -40,19 +40,21 @@ require(path.join(ROOT, 'ampioin/ampio-config.js'))(RED);
 require(path.join(ROOT, 'ampioin/in.js'))(RED);
 require(path.join(ROOT, 'ampioin/out.js'))(RED);
 require(path.join(ROOT, 'ampioin/audit.js'))(RED);
+require(path.join(ROOT, 'ampioin/lcd.js'))(RED);
+require(path.join(ROOT, 'ampioin/events.js'))(RED);
 const au = require(path.join(ROOT, 'generic/ampio-utils.js'));
 
-const mk = (t, c) => { const n = {}; types[t].call(n, c); return n; };
+const created = [];
+const mk = (t, c) => { const n = {}; types[t].call(n, c); created.push(n); return n; };
 const wait = ms => new Promise(r => setTimeout(r, ms));
-const ok = (c, m) => { quiet((c ? 'PASS ' : 'FAIL ') + m); if (!c) { failed++; } };
+// checks are collected and reported as separate test cases at the end
+const ok = (c, m) => results.push([m, !!c]);
 const request = (route) => new Promise(resolve => {
     const res = { code: 200, status(c) { this.code = c; return this; }, json(b) { this.body = b; resolve(this); } };
     routes[route]({}, res);
 });
 
-// protobuf helpers to build a section 17 description
-const pbStr = (f, str) => { const b = Buffer.from(str); return Buffer.concat([Buffer.from([f << 3 | 2, b.length]), b]); };
-const pbMsg = (f, buf) => Buffer.concat([Buffer.from([f << 3 | 2, buf.length]), buf]);
+const { pbStr, pbMsg } = require('./fixtures');
 
 function unitTests() {
     ok(au.build_topic('set', '1a2b', 129, 0, 3) === 'device/v1/set/leaf/1a2b/129/0/3', 'build_topic');
@@ -89,7 +91,7 @@ async function integrationTests(s17) {
     const seen = [];
     ext.on('message', (t, p) => seen.push([t, p.toString()]));
     await new Promise(r => ext.on('connect', r));
-    ext.subscribe(['device/v1/set/#', 'rpc/v2/request/ampio-mqtt/+']);
+    ext.subscribe(['device/v1/set/#', 'rpc/v2/request/ampio-mqtt/+', 'ampio/to/+/raw']);
     await wait(300);
 
     ext.publish('device/v1/state/leaf/1a2b/136/2/4', '{"v":2}', { retain: true });
@@ -100,7 +102,8 @@ async function integrationTests(s17) {
     ok(inN.sent && inN.sent.length === 1 && inN.sent[0].payload === 1 && inN.sent[0].index === 0, 'IN receives only its own topic');
     ok(inN.warns && inN.warns.length === 1, 'IN warns on invalid JSON');
 
-    const cfg2 = mk('ampiov2config', { id: 'cfg2', server: '127.0.0.1', port: String(PORT) });
+    // second config node: fresh subscriptions get retained states
+    mk('ampiov2config', { id: 'cfg2', server: '127.0.0.1', port: String(PORT) });
     const skip = mk('Ampio v2 IN', { id: 'in3', server: 'cfg2', mac: '1a2b', devtype: '136', attribute: '2', index: '4', retainignore: true });
     const keep = mk('Ampio v2 IN', { id: 'in4', server: 'cfg2', mac: '1a2b', devtype: '136', attribute: '2', index: '4', retainignore: false });
     await wait(400);
@@ -197,6 +200,30 @@ async function integrationTests(s17) {
     ok(audit.sent && audit.sent.every(m => m.topic && typeof m.payload === 'object'), 'audit msg has topic and payload object');
     await new Promise(r => audit.emit('close', true, r));
 
+    // LCD: numbers are displayed too (was ignored), close does not throw
+    const lcd = mk('Ampio v2 LCD', { id: 'lcd', server: 'cfg', mac: '0001AB', lcdfont: '07', lcdxpos: '1', lcdypos: '2', lcdcharcolor: '#ffffff', lcdbackcolor: '#000000' });
+    let lcdErr = 'unset';
+    lcd.emit('input', { payload: 42 }, null, e => (lcdErr = e));
+    lcd.emit('input', { payload: 'Hi' }, null, () => {});
+    // Events: send and receive
+    const events = mk('Ampio v2 Events', { id: 'ev', server: 'cfg' });
+    ext.subscribe('ampio/to/event');
+    await wait(200);
+    events.emit('input', { payload: '0102' }, null, () => {});
+    ext.publish('ampio/from/1EF19/event', '0a0b');
+    await wait(300);
+    const lcdFrames = seen.filter(([t]) => t === 'ampio/to/1AB/raw').map(([, p]) => p);
+    ok(lcdFrames.length === 2 && lcdFrames[0].endsWith(Buffer.from('42').toString('hex')), 'LCD sends numeric payload as text ' + JSON.stringify(lcdFrames));
+    ok(lcdErr === undefined || lcdErr === null, 'LCD done() once without error');
+    ok(seen.some(([t, p]) => t === 'ampio/to/event' && p === '0102'), 'Events sends to ampio/to/event');
+    ok(events.sent && events.sent[0].payload === '0a0b' && events.sent[0].eventSender === '1EF19', 'Events receives with eventSender');
+    let closeErr = null;
+    try {
+        await new Promise(r => lcd.emit('close', true, r));
+        await new Promise(r => events.emit('close', true, r));
+    } catch (e) { closeErr = e; }
+    ok(closeErr === null, 'LCD and Events close without ReferenceError');
+
     const defsRes = await request('/ampio-v2/cfg/leafdefs');
     ok(defsRes.body && defsRes.body[136].label === 'Blind', 'leafdefs endpoint');
 
@@ -207,16 +234,34 @@ async function integrationTests(s17) {
     await new Promise(r => inN.emit('close', true, r));
     await wait(100);
     ok(cfg.client.connected, 'removing one IN node keeps shared connection');
-    ext.end(true);
+    return ext;
 }
 
-const server = net.createServer(aedes.handle);
-server.listen(PORT, async () => {
+test('nodes against in-process MQTT broker', {timeout: 60000}, async (t) => {
+    const server = net.createServer(aedes.handle);
+    await new Promise((resolve) => server.listen(PORT, resolve));
+    let ext;
     try {
-        await integrationTests(unitTests());
+        ext = await integrationTests(unitTests());
     } catch (e) {
         ok(false, 'exception: ' + e.stack);
+    } finally {
+        // close nodes (config nodes last) so no MQTT client or timer keeps the process alive
+        const isConfig = (n) => n.subscriptions !== undefined;
+        for (const n of created.filter((x) => !isConfig(x)).concat(created.filter(isConfig))) {
+            await new Promise((resolve) => {
+                const listeners = n.listeners('close');
+                // Node-RED passes (removed, done) to 2-argument close handlers, (done) otherwise
+                if (!listeners.length) { return resolve(); }
+                listeners.length >= 2 || listeners[0].length >= 2 ? n.emit('close', true, resolve) : n.emit('close', resolve);
+            });
+        }
+        if (ext) { ext.end(true); }
+        await new Promise((resolve) => aedes.close(resolve));
+        await new Promise((resolve) => server.close(resolve));
     }
-    quiet(failed ? failed + ' failed' : 'all passed');
-    process.exit(failed ? 1 : 0);
+    console.log = quiet;
+    for (const [name, passed] of results) {
+        await t.test(name, () => assert.ok(passed, name));
+    }
 });

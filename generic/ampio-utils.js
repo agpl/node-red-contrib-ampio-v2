@@ -193,7 +193,7 @@ exports.device_info = function (dev) {
             const desc = exports.parse_descriptions(section.data);
             info.name = info.name || desc.name;
             info.channels = desc.channels;
-        } catch (err) {
+        } catch {
             // descriptions are optional, device stays usable without names
         }
     }
