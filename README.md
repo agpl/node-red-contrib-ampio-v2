@@ -59,7 +59,12 @@ Pushing a version tag publishes the package to npm (`.github/workflows/publish.y
 npm version patch   # or minor / major, creates commit and tag vX.Y.Z
 git push --follow-tags
 ```
-Requires the repository secret `NPM_TOKEN` (npm automation token) and a GitHub environment named `npm`. Packages are published with npm provenance.
+Publishing uses [npm trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC), no npm token is stored in GitHub. Packages get npm provenance automatically. Setup:
+
+1. GitHub: repository settings → Environments → create `npm` (optionally with required reviewers).
+2. npmjs.com: package settings → Trusted publisher → GitHub Actions: user `agpl`, repository `node-red-contrib-ampio-v2`, workflow `publish.yml`, environment `npm`.
+
+The trusted publisher is configured on an existing package, so the very first version has to be published once by hand (`npm publish`), later versions are published by the workflow.
 
 ## Changelog
 Disclaimer: every version lower than 1.0.0 is considered as beta. I do all my best to make every release as stable as possible, but due to fast development of protocol, API changes may occur. 1.0.0 is planned after transition to /b/ MQTT broadcasts, which requires many changes.

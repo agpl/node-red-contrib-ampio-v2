@@ -2,6 +2,11 @@ name: Publish to npm
 
 # Push a version tag to publish, ex.:
 #   npm version minor && git push --follow-tags
+#
+# Uses npm trusted publishing (OIDC), no npm token is stored in GitHub.
+# npmjs.com -> package settings -> Trusted publisher -> GitHub Actions:
+#   organization/user: agpl, repository: node-red-contrib-ampio-v2,
+#   workflow filename: publish.yml, environment: npm
 on:
   push:
     tags: ['v*']
@@ -20,7 +25,7 @@ jobs:
     environment: npm
     permissions:
       contents: read
-      id-token: write # npm provenance
+      id-token: write # OIDC token for npm trusted publishing
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -28,6 +33,8 @@ jobs:
           node-version: 20
           registry-url: https://registry.npmjs.org
           cache: npm
+      - name: npm with trusted publishing support (11.5.1 or newer)
+        run: npm install -g npm@^11.5.1
       - run: npm ci
       - name: Tag matches package.json version
         run: |
@@ -36,7 +43,6 @@ jobs:
             echo "::error::tag $GITHUB_REF_NAME does not match package.json version $VERSION"
             exit 1
           fi
+      # provenance is added automatically when publishing through a trusted publisher
       - name: Publish
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
