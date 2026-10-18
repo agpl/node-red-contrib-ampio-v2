@@ -51,10 +51,10 @@ npm run check    # both
 Tests live in `test/`: `utils.test.js` (topics, payloads, protobuf and description decoders, discovery), `defs.test.js` (definition files, editor HTML),
 `extract.test.js` (Designer extractor on a synthetic bundle) and `nodes.test.js` (IN/OUT/Audit/LCD/Events/config nodes with a stubbed Node-RED runtime).
 
-GitHub Actions run lint, `npm audit` of runtime dependencies, a package contents check and the tests on Node 18, 20 and 22 for every push and pull request.
+GitHub Actions run lint, `npm audit` of runtime dependencies, a package contents check and the tests on Node 18, 20, 22 and 24 for every push and pull request.
 
 ## Releases
-Pushing a version tag publishes the package to npm (`.github/workflows/publish.yml`), after the CI jobs pass and the tag matches `package.json`:
+Pushing a version tag stages the package on npm (`.github/workflows/publish.yml`), after the CI jobs pass and the tag matches `package.json`:
 ```
 npm version patch   # or minor / major, creates commit and tag vX.Y.Z
 git push --follow-tags
@@ -65,6 +65,13 @@ Publishing uses [npm trusted publishing](https://docs.npmjs.com/trusted-publishe
 2. npmjs.com: package settings → Trusted publisher → GitHub Actions: user `agpl`, repository `node-red-contrib-ampio-v2`, workflow `publish.yml`, environment `npm`.
 
 The trusted publisher is configured on an existing package, so the very first version has to be published once by hand (`npm publish`), later versions are published by the workflow.
+
+The workflow uses staged publishing (`npm stage publish`): a staged version is not public until a maintainer approves it with 2FA, on npmjs.com or with the CLI:
+```
+npm stage list node-red-contrib-ampio-v2
+npm stage approve <stage-id>
+```
+`npm stage publish` is always allowed for a trusted publisher; direct `npm publish` would need the "Allow npm publish" option.
 
 ## Changelog
 Disclaimer: every version lower than 1.0.0 is considered as beta. I do all my best to make every release as stable as possible, but due to fast development of protocol, API changes may occur. 1.0.0 is planned after transition to /b/ MQTT broadcasts, which requires many changes.

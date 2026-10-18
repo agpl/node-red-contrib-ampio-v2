@@ -7,6 +7,10 @@ name: Publish to npm
 # npmjs.com -> package settings -> Trusted publisher -> GitHub Actions:
 #   organization/user: agpl, repository: node-red-contrib-ampio-v2,
 #   workflow filename: publish.yml, environment: npm
+#
+# The version is staged, not published: approve it with 2FA to make it public:
+#   npm stage list node-red-contrib-ampio-v2
+#   npm stage approve <stage-id>
 on:
   push:
     tags: ['v*']
@@ -21,20 +25,20 @@ jobs:
   publish:
     name: Publish
     needs: ci
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: npm
     permissions:
       contents: read
       id-token: write # OIDC token for npm trusted publishing
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
           cache: npm
-      - name: npm with trusted publishing support (11.5.1 or newer)
-        run: npm install -g npm@^11.5.1
+      - name: npm with trusted and staged publishing support
+        run: npm install -g npm@^11.21.0
       - run: npm ci
       - name: Tag matches package.json version
         run: |
@@ -44,5 +48,5 @@ jobs:
             exit 1
           fi
       # provenance is added automatically when publishing through a trusted publisher
-      - name: Publish
-        run: npm publish --access public
+      - name: Stage for publishing (approve with 2FA to release)
+        run: npm stage publish . --access public
